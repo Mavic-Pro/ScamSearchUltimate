@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: scamhunter
+      POSTGRES_USER: scamhunter
+      POSTGRES_PASSWORD: scamhunter
+    ports:
+      - "5432:5432"
+    volumes:
+      - scamhunter_pg:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: scamhunter
+      DB_USER: scamhunter
+      DB_PASSWORD: scamhunter
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
+      PLAYWRIGHT_ENABLED: 1
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "backend.src.jobs.worker"]
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: scamhunter
+      DB_USER: scamhunter
+      DB_PASSWORD: scamhunter
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
+      PLAYWRIGHT_ENABLED: 1
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  scamhunter_pg:
