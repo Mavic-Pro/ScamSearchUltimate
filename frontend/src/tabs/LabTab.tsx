@@ -86,6 +86,28 @@ export default function LabTab() {
     }
   }, [targetId]);
 
+  const queuePivotUrls = async (rawUrls: Array<string | null | undefined>, sourceLabel: string, limit = 200) => {
+    const urls = Array.from(
+      new Set(rawUrls.map((url) => (url ? String(url).trim() : "")).filter(Boolean))
+    );
+    if (urls.length === 0) {
+      setActionStatus(tr("No pivot results to queue.", "Nessun risultato pivot da mettere in coda.", lang));
+      return;
+    }
+    const queued = await safePost<{ queued: number[] }>("/api/scan/bulk", { urls: urls.slice(0, limit) });
+    if (queued.ok) {
+      setActionStatus(
+        tr(
+          `Queued ${queued.data.queued?.length ?? 0} scans from ${sourceLabel}.`,
+          `Messi in coda ${queued.data.queued?.length ?? 0} scan da ${sourceLabel}.`,
+          lang
+        )
+      );
+    } else {
+      setActionStatus(queued.error);
+    }
+  };
+
   const runPivot = async () => {
     if (!hashQuery) return;
     setActionStatus(tr("Pivot hash requested.", "Pivot hash richiesto.", lang));
@@ -104,6 +126,10 @@ export default function LabTab() {
           lang
         )
       );
+      const localUrls = (res.data.local || []).map((row) => String(row?.url || "")).filter(Boolean);
+      const urlscanUrls = (res.data.urlscan || []).map((url) => String(url || "")).filter(Boolean);
+      const pivotLabel = tr("pivot results", "risultati pivot", lang);
+      await queuePivotUrls([...localUrls, ...urlscanUrls], pivotLabel);
     } else {
       setError(res.error);
       setActionStatus(res.error);
@@ -124,6 +150,9 @@ export default function LabTab() {
           lang
         )
       );
+      const localUrls = (res.data.local || []).map((row) => String(row?.url || "")).filter(Boolean);
+      const pivotLabel = tr("pivot results", "risultati pivot", lang);
+      await queuePivotUrls(localUrls, pivotLabel);
     } else {
       setError(res.error);
       setActionStatus(res.error);
@@ -158,23 +187,8 @@ export default function LabTab() {
           )
         );
       }
-      const urls = (res.data.results || []).slice(0, size);
-      if (urls.length > 0) {
-        const queued = await safePost<{ queued: number[] }>("/api/scan/bulk", { urls });
-        if (queued.ok) {
-          setActionStatus(
-            tr(
-              `Queued ${queued.data.queued?.length ?? 0} scans from FOFA results.`,
-              `Messi in coda ${queued.data.queued?.length ?? 0} scan dai risultati FOFA.`,
-              lang
-            )
-          );
-        } else {
-          setActionStatus(queued.error);
-        }
-      } else {
-        setActionStatus(tr("No FOFA results to queue.", "Nessun risultato FOFA da mettere in coda.", lang));
-      }
+      const fofaLabel = tr("FOFA results", "risultati FOFA", lang);
+      await queuePivotUrls(res.data.results || [], fofaLabel, size);
     } else {
       setError(res.error);
       setFofaStatus(res.error);
