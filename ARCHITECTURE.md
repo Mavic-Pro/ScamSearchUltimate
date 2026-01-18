@@ -13,11 +13,13 @@ Key flows:
 2) **Job queue** stores scan/hunt tasks with leases to avoid stuck jobs.
 3) **Scan pipeline** uses safe fetching (timeouts + HTML-only) to parse pages, hash DOM/headers/assets, extract indicators, compute favicon/screenshot hashes, run regex/YARA matches, and materialize graph nodes.
 4) **Screenshot capture** uses Playwright when enabled; if it fails, a safe fallback is stored and the reason is recorded.
-5) **Urlscan Local** stores scan metadata to allow local search and pivot (domain, hash, IP, JARM, favicon).
+5) **Urlscan Local** stores scan metadata to allow local search and pivot (domain, hash, IP, JARM, favicon), plus cached redirect chains for remote lookups.
 6) **IOC storage** lets you mark hashes/URLs/domains with context and export them in multiple formats.
 7) **Pivot APIs** allow expansion by hash, IP, JARM, favicon, and FOFA-compatible fields.
-8) **Hunt engine** schedules repeated discovery with TTL/budget and optional providers.
-9) **Front-end tabs** call API endpoints with fail-safe error handling and offer a “Ripara DB” action.
+8) **Hunt engine** schedules repeated discovery with TTL/budget and optional providers; auto-run is driven by the worker.
+9) **Alerts + rules** apply regex-based alert rules during scans.
+10) **Update checker** compares local version to GitHub and can auto-update when enabled.
+11) **Front-end tabs** call API endpoints with fail-safe error handling and offer a “Ripara DB” action.
 
 Modules of interest:
 - `backend/src/core/scan.py`: scan pipeline, asset hashing, indicators extraction, screenshot capture, urlscan_local insert, campaign clustering.

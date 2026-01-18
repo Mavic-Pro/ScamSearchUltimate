@@ -39,6 +39,8 @@ Schema version is stored in `schema_version`.
 - status (text) DONE/FAILED/SKIPPED/QUEUED/RUNNING
 - reason (text)
 - risk_score (int)
+- redirect_chain (text)
+- tags (text)
 - dom_hash (text)
 - headers_hash (text)
 - headers_text (text)
@@ -86,6 +88,8 @@ Schema version is stored in `schema_version`.
 - id (bigserial, PK)
 - target_id (bigint, FK)
 - signature_id (bigint, FK)
+- verified (bool)
+- confidence (int)
 - created_at (timestamp)
 
 ### hunts
@@ -97,6 +101,15 @@ Schema version is stored in `schema_version`.
 - delay_seconds (int)
 - budget (int)
 - enabled (bool)
+- last_run_at (timestamp)
+- created_at (timestamp)
+
+### hunt_runs
+- id (bigserial, PK)
+- hunt_id (bigint, FK)
+- trigger (text) manual/auto
+- queued (int)
+- warning (text)
 - created_at (timestamp)
 
 ### alerts
@@ -104,6 +117,14 @@ Schema version is stored in `schema_version`.
 - target_id (bigint, FK)
 - kind (text)
 - message (text)
+- created_at (timestamp)
+
+### alert_rules
+- id (bigserial, PK)
+- name (text)
+- pattern (text)
+- target_field (text) html/headers/url
+- enabled (bool)
 - created_at (timestamp)
 
 ### campaigns
@@ -153,6 +174,8 @@ Schema version is stored in `schema_version`.
 - target_id (bigint, FK)
 - asset_id (bigint, FK)
 - rule_id (bigint, FK)
+- verified (bool)
+- confidence (int)
 - created_at (timestamp)
 
 ### urlscan_local
@@ -164,10 +187,18 @@ Schema version is stored in `schema_version`.
 - title (text)
 - status (text)
 - content_type (text)
+- redirect_chain (text)
 - dom_hash (text)
 - headers_hash (text)
 - favicon_hash (text)
 - jarm (text)
+- created_at (timestamp)
+
+### urlscan_remote
+- id (bigserial, PK)
+- url (text)
+- redirect_chain (text)
+- result_url (text)
 - created_at (timestamp)
 
 ## Views
@@ -179,6 +210,7 @@ Schema version is stored in `schema_version`.
 - `favicon_hash` and `jarm` help link related infrastructure.
 - `screenshot_*` columns store image hashes for similarity grouping.
 - `urlscan_local` is a local search index for scans; it powers the Urlscan tab without external APIs.
+- `urlscan_remote` caches redirect chains fetched from urlscan.io.
 - `settings` stores encrypted values; the encryption key comes from `APP_SECRET_KEY`.
 - `iocs` stores manually marked indicators with their related target context.
 - `yara_rules` and `yara_matches` store YARA rules and their matches on HTML/assets.

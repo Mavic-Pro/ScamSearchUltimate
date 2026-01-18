@@ -53,16 +53,16 @@ Open `http://localhost:5173`.
 ## Main tabs (one line each)
 
 - **Scan**: create jobs and scan targets.
-- **Hunt**: repeated rules with TTL/budget.
-- **Urlscan**: local search on scans.
-- **Lab**: target details.
+- **Hunt**: repeated rules with TTL/budget + auto-run.
+- **Urlscan**: local search on scans + redirect chains.
+- **Lab**: target details + timeline/diff.
 - **Campaigns**: clusters of similar sites.
 - **Signatures**: regex and DB search.
-- **Alerts**: events and history.
+- **Alerts**: events, history, and custom rules.
 - **Graph**: Maltego-style relationships.
 - **Export**: CSV + graph JSON.
-- **AI Chat**: rule/signature suggestions.
-- **Settings**: keys and options.
+- **AI Chat**: rule/signature suggestions + IOC pivots (multi-target).
+- **Settings**: keys, scheduler, health checks, updates.
 
 ---
 

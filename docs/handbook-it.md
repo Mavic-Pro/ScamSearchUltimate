@@ -19,6 +19,13 @@ Pensa al tool come a un radar che cerca siti sospetti e poi li raggruppa per som
 
 ---
 
+## 0.0) Novita recenti
+- Redirect chain in Urlscan/Lab con salvataggio IOC.
+- AI Chat con piu Target ID e pivot suggeriti.
+- Auto-run hunt con log scheduler e playbook.
+- Timeline e diff in Lab.
+- Health check e notifiche update.
+
 ## 0.1) Glossario base (parole semplici)
 
 - **URL**: l'indirizzo completo di una pagina web, ad esempio `https://example.com/login`.
@@ -69,6 +76,10 @@ Le API key servono per fare discovery su servizi esterni:
 - urlscan: ricerca e pivot su scansioni pubbliche (caro);
 - AI: generazione regole/firme (opzionale- compatibile con AI locali e online).
 - TAXII: invio IOC a un server TAXII (opzionale).
+Altre impostazioni:
+- update check (repo GitHub);
+- auto-run hunt (scheduler);
+- filtro confidenza match.
 
 Come inserire le chiavi:
 1. Vai su **Settings**.
@@ -158,7 +169,7 @@ Se un job resta bloccato, il sistema fa requeue automatico.
 
 ## 5) Hunt (Tab Hunt) - Cosa fa
 
-Hunt e' per regole ripetute nel tempo, con budget e TTL.
+Hunt e' per regole ripetute nel tempo, con budget e TTL. Puoi abilitare auto-run e usare playbook.
 
 Campi principali:
 - **Nome**: etichetta regola;
@@ -236,7 +247,8 @@ Passi:
    - headers;
    - assets con hash;
    - indicatori estratti;
-   - signature match.
+   - signature match;
+   - redirect chain, timeline e diff.
 
 Qui puoi decidere se il target e' SAFE o MALICIOUS (workflow interno).
 
@@ -286,6 +298,7 @@ Alerts registra:
 - rischio alto (risk score);
 - match signature;
 - nuovi collegamenti a campagne.
+Puoi aggiungere regole alert personalizzate (regex).
 
 Passi:
 1. Vai su **Alerts**.
@@ -302,7 +315,8 @@ Cosa puoi fare:
 - cercare per dominio, hash, IP, JARM o query testuale;
 - vedere lo storico scansioni;
 - esportare CSV dei risultati;
-- usare i pivot (clic su hash o ip).
+- usare i pivot (clic su hash o ip);
+- vedere redirect chain e salvarle come IOC.
 
 Passi:
 1. Vai su **Urlscan**.
@@ -346,6 +360,7 @@ Funzioni:
 - genera regole FOFA/urlscan/dork;
 - propone firme regex;
 - evita campi inventati (JSON validato).
+- supporta piu Target ID per confronto e pivot IOC.
 
 Passi:
 1. Vai su **AI Chat**.

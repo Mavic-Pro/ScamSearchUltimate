@@ -53,16 +53,16 @@ Apri `http://localhost:5173`.
 ## Tab principali (1 riga ciascuna)
 
 - **Scan**: crea job e fa lo scanning.
-- **Hunt**: regole ripetute con TTL/budget.
-- **Urlscan**: ricerca locale su scansioni.
-- **Lab**: dettagli del target.
+- **Hunt**: regole ripetute con TTL/budget + auto-run.
+- **Urlscan**: ricerca locale su scansioni + redirect chain.
+- **Lab**: dettagli target + timeline/diff.
 - **Campaigns**: cluster di siti simili.
 - **Signatures**: regex e ricerca DB.
-- **Alerts**: eventi e storico.
+- **Alerts**: eventi, storico e regole custom.
 - **Graph**: relazioni stile Maltego.
 - **Export**: CSV + JSON grafo.
-- **AI Chat**: suggerimenti per regole/firme.
-- **Settings**: chiavi e opzioni.
+- **AI Chat**: suggerimenti per regole/firme + pivot IOC (multi-target).
+- **Settings**: chiavi, scheduler, health check, update.
 
 ---
 

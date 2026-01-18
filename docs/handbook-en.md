@@ -19,6 +19,13 @@ Think of it as a radar that looks for suspicious sites and groups similar ones t
 
 ---
 
+## 0.0) Recent additions
+- Redirect chains in Urlscan/Lab with “save as IOC” actions.
+- AI Chat supports multiple Target IDs and pivot suggestions.
+- Auto-run hunts with scheduler log and playbooks.
+- Timeline + diff view in Lab.
+- System health checks and update notifications.
+
 ## 0.1) Basic glossary (simple words)
 
 - **URL**: the full address of a web page, e.g. `https://example.com/login`.
@@ -68,6 +75,10 @@ API keys enable external discovery:
 - urlscan: scan search and pivots;
 - AI: optional rule/signature generation.
 - TAXII: push IOC to a TAXII server (optional).
+Other settings:
+- Update checks (GitHub repo);
+- Auto-run hunts (scheduler);
+- Confidence filter for matches.
 
 How to set keys:
 1. Go to **Settings**.
@@ -157,7 +168,7 @@ If a job is stuck, the system requeues it automatically.
 
 ## 5) Hunt (Hunt tab) - What it does
 
-Hunt is for repeated discovery with TTL and budgets.
+Hunt is for repeated discovery with TTL and budgets. You can auto-run enabled hunts and save playbooks for reuse.
 
 Fields:
 - **Name**: label;
@@ -235,7 +246,8 @@ Steps:
    - headers;
    - assets with hashes;
    - extracted indicators;
-   - signature matches.
+   - signature matches;
+   - redirect chains, timeline, and diffs.
 
 This is where you decide SAFE vs MALICIOUS.
 
@@ -285,6 +297,7 @@ Alerts are created when:
 - risk score is high;
 - a signature matches;
 - a campaign link is created.
+You can also create custom alert rules (regex).
 
 Steps:
 1. Open **Alerts**.
@@ -301,7 +314,8 @@ You can:
 - search by domain, hash, IP, JARM, or free text;
 - view scan history;
 - export CSV results;
-- pivot by clicking hashes or IPs.
+- pivot by clicking hashes or IPs;
+- view redirect chains and save them as IOCs.
 
 Steps:
 1. Open **Urlscan**.
@@ -345,6 +359,7 @@ Features:
 - generates FOFA/urlscan/dork rules;
 - proposes regex signatures;
 - validates JSON so no fake fields are used.
+ - supports multiple Target IDs for context and pivot suggestions.
 
 Steps:
 1. Open **AI Chat**.

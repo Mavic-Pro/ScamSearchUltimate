@@ -1,6 +1,6 @@
 # ScamHunter Ultimate
 
-ScamHunter Ultimate is a production-grade defensive scanning and hunting platform for scam/phishing sites. It supports batch scans, discovery, scheduled hunts, campaigns clustering, signatures, alerts, a Maltego-style graph, local urlscan-like search, and exports.
+ScamHunter Ultimate is a production-grade defensive scanning and hunting platform for scam/phishing sites. It supports batch scans, discovery, scheduled hunts, campaigns clustering, signatures, alerts, a Maltego-style graph, local urlscan-like search, redirect chains, AI-assisted pivots, and exports.
 
 ## Step-by-step plan
 1) Start PostgreSQL and services via Docker Compose.
@@ -30,15 +30,15 @@ Open the UI at `http://localhost:5173`.
 - EN: `docs/cheatsheet-en.md`
 
 ## What each main part does (simple explanation)
-- **Scan**: you give a URL, a keyword, or a FOFA query. The system creates jobs, fetches the page safely, extracts indicators, hashes content, and stores results.
-- **Hunt**: you save a rule (FOFA, urlscan, or dork), then run it with TTL, delay, and budget so it repeats in a controlled loop.
-- **Lab**: detail view for a target. You can see headers, assets, indicators, signature matches, and screenshots.
+- **Scan**: you give a URL, a keyword, or a FOFA query. The system creates jobs, fetches the page safely, extracts indicators, hashes content, and stores results. Playbooks let you save/reuse scan presets.
+- **Hunt**: you save a rule (FOFA, urlscan, or dork), then run it with TTL, delay, and budget so it repeats in a controlled loop. Auto-run is configurable.
+- **Lab**: detail view for a target. You can see headers, assets, indicators, signature matches, screenshots, redirect chains, timeline, and diffs.
 - **Campaigns**: groups similar targets by hashes (DOM, favicon, screenshot), JARM, and assets.
 - **Graph**: visualizes relationships between domains, IPs, hashes, indicators, and campaigns.
-- **Urlscan Local**: a local index of scans with search and pivot by hashes, domains, IP, and JARM.
+- **Urlscan Local**: a local index of scans with search and pivot by hashes, domains, IP, and JARM. Redirect chains can be viewed and saved as IOCs.
 - **IOCs**: saved indicators with filters and multi-format export (CSV/JSON/STIX/OpenIOC/MISP).
 - **YARA**: YARA rules for HTML/assets (optional, requires yara-python).
-- **AI Chat**: optional assistant to propose rules and signatures (always validated JSON).
+- **AI Chat**: optional assistant to propose rules/signatures and suggest IOC pivots. Supports multiple Target IDs for context.
 
 ## Defensive FOFA examples
 - `title="login" && country="IT" && port="443"`
@@ -48,21 +48,24 @@ Open the UI at `http://localhost:5173`.
 
 ## Workflow
 1) Scan tab: submit a URL, keyword, or FOFA query. Discovery providers are enabled when keys are configured.
-2) Hunt tab: create rules with TTL, delay, and budget; launch hunts in loop.
-3) Lab tab: inspect headers, assets, indicators, and tag SAFE/MALICIOUS.
+2) Hunt tab: create rules with TTL, delay, and budget; launch or auto-run hunts.
+3) Lab tab: inspect headers, assets, indicators, redirect chains, and timeline.
 4) Campaigns tab: review clusters built from hashes and JARM.
 5) Signatures tab: manage regex rules and run DB search.
 6) YARA tab: add YARA rules for HTML/assets (requires yara-python).
-7) Alerts tab: review alerts and configure webhook.
+7) Alerts tab: review alerts and configure custom alert rules.
 8) IOCs tab: review saved indicators with filters and export formats.
 9) Graph tab: explore relationships and expand nodes.
 10) Export tab: export CSV/graph JSON + IOC formats and TAXII push.
+11) AI Chat tab: generate rules/signatures and IOC pivots with context.
+12) Settings tab: configure keys, scheduler, confidence filter, and update checks.
 
 ## Settings and secrets (important)
 - All API keys are stored encrypted in the DB.
 - The encryption key is `APP_SECRET_KEY` (Fernet). Put it in `.env`.
 - If you do not set `APP_SECRET_KEY`, the app still works but secrets are not stable across restarts.
 - TAXII push uses `TAXII_URL` and `TAXII_COLLECTION` (optional `TAXII_API_KEY`).
+- Update checker uses `GITHUB_REPO` and optional `GITHUB_BRANCH`.
 
 Generate a key:
 ```bash
@@ -94,8 +97,8 @@ cd frontend && npm i && npm run build
 ## Tab tour (what to click, in order)
 1) **Scan**: paste a URL, then click **Start Scan**. Use keyword/FOFA only when you want discovery.
 2) **Hunt**: add a rule (dork/fofa/urlscan), then **Start Hunt** to run it.
-3) **Urlscan**: search by domain/hash/IP; click a result to pivot.
-4) **Lab**: load a target ID; inspect headers, assets, indicators, screenshot.
+3) **Urlscan**: search by domain/hash/IP; check redirect chains and save IOCs.
+4) **Lab**: load a target ID; inspect headers, assets, indicators, timeline, screenshot.
 5) **Campaigns**: review clusters and members; use it to spot linked infra.
 6) **Signatures**: add a regex and test it with scans; use DB search.
 7) **YARA**: add YARA rules for HTML/assets and review matches in Lab.
@@ -103,8 +106,8 @@ cd frontend && npm i && npm run build
 9) **IOCs**: filter and export IOC in CSV/JSON/STIX/OpenIOC/MISP.
 10) **Graph**: choose a node type and expand to explore relationships.
 11) **Export**: download CSV/graph + IOC formats and TAXII push.
-12) **AI Chat**: generate rules/signatures and create them with one click (optional context).
-13) **Settings**: configure keys, AI provider, TAXII, and optional favicon behavior.
+12) **AI Chat**: generate rules/signatures and extract IOC pivots across multiple targets.
+13) **Settings**: configure keys, AI provider, scheduler, confidence filters, and update checks.
 
 ## Troubleshooting (advanced)
 - **Buttons do nothing**: confirm backend is reachable at `http://localhost:8000` and frontend at `http://localhost:5173`.
