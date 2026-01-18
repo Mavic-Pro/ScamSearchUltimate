@@ -27,6 +27,19 @@ export default function LabTab() {
   const [pivot, setPivot] = React.useState<{ local: any[]; urlscan: string[]; warning?: string | null } | null>(
     null
   );
+  const [blockcypherData, setBlockcypherData] = React.useState<any | null>(null);
+  const [blockcypherStatus, setBlockcypherStatus] = React.useState<string | null>(null);
+  const [holeheData, setHoleheData] = React.useState<any | null>(null);
+  const [holeheStatus, setHoleheStatus] = React.useState<string | null>(null);
+  const [crtshData, setCrtshData] = React.useState<any | null>(null);
+  const [crtshStatus, setCrtshStatus] = React.useState<string | null>(null);
+  const [domainsdbData, setDomainsdbData] = React.useState<any | null>(null);
+  const [domainsdbStatus, setDomainsdbStatus] = React.useState<string | null>(null);
+  const [spiderStatus, setSpiderStatus] = React.useState<string | null>(null);
+  const [spiderJobId, setSpiderJobId] = React.useState<number | null>(null);
+  const [spiderMaxPages, setSpiderMaxPages] = React.useState(200);
+  const [spiderMaxDepth, setSpiderMaxDepth] = React.useState(2);
+  const [spiderUseSitemap, setSpiderUseSitemap] = React.useState(true);
   const [fofaField, setFofaField] = React.useState("body");
   const [fofaValue, setFofaValue] = React.useState("");
   const [fofaLimit, setFofaLimit] = React.useState(50);
@@ -82,6 +95,16 @@ export default function LabTab() {
       setIocStatus(null);
       setWhoisData(null);
       setWhoisError(null);
+      setBlockcypherData(null);
+      setBlockcypherStatus(null);
+      setHoleheData(null);
+      setHoleheStatus(null);
+      setCrtshData(null);
+      setCrtshStatus(null);
+      setDomainsdbData(null);
+      setDomainsdbStatus(null);
+      setSpiderStatus(null);
+      setSpiderJobId(null);
       await loadJobs(res.data.target?.url ? String(res.data.target.url) : null);
       await loadWhois();
       await loadTimeline();
@@ -153,6 +176,114 @@ export default function LabTab() {
       flashQueueNotice(message);
     } else {
       setActionStatus(queued.error);
+    }
+  };
+
+  const normalizeHostUrl = (host: string) => {
+    const trimmed = host.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+    const defaultScheme = (() => {
+      try {
+        const base = data?.target?.url ? new URL(String(data.target.url)) : null;
+        return base?.protocol || "https:";
+      } catch (err) {
+        return "https:";
+      }
+    })();
+    return `${defaultScheme}//${trimmed}`;
+  };
+
+  const runBlockcypherPivot = async (address: string) => {
+    const value = address.trim();
+    if (!value) return;
+    setBlockcypherStatus(tr("Blockcypher lookup...", "Ricerca Blockcypher...", lang));
+    const res = await safeGet<any>(`/api/pivot/blockcypher?address=${encodeURIComponent(value)}&limit=20`);
+    if (res.ok) {
+      setBlockcypherData(res.data);
+      setBlockcypherStatus(null);
+    } else {
+      setBlockcypherStatus(res.error);
+    }
+  };
+
+  const runHolehePivot = async (email: string) => {
+    const value = email.trim();
+    if (!value) return;
+    setHoleheStatus(tr("Holehe lookup...", "Ricerca Holehe...", lang));
+    const res = await safeGet<any>(`/api/pivot/holehe?email=${encodeURIComponent(value)}`);
+    if (res.ok) {
+      setHoleheData(res.data);
+      setHoleheStatus(null);
+    } else {
+      setHoleheStatus(res.error);
+    }
+  };
+
+  const runCrtshPivot = async (domain: string) => {
+    const value = domain.trim();
+    if (!value) return;
+    setCrtshStatus(tr("CRT.sh lookup...", "Ricerca CRT.sh...", lang));
+    const res = await safeGet<{ subdomains: string[] }>(`/api/pivot/crtsh?domain=${encodeURIComponent(value)}`);
+    if (res.ok) {
+      setCrtshData(res.data);
+      setCrtshStatus(null);
+      const urls = (res.data.subdomains || []).map((host) => normalizeHostUrl(host)).filter(Boolean);
+      if (urls.length > 0) {
+        await queuePivotUrls(urls, tr("CRT.sh", "CRT.sh", lang), 200);
+      }
+    } else {
+      setCrtshStatus(res.error);
+    }
+  };
+
+  const runDomainsdbPivot = async (domain: string) => {
+    const value = domain.trim();
+    if (!value) return;
+    setDomainsdbStatus(tr("DomainsDB lookup...", "Ricerca DomainsDB...", lang));
+    const res = await safeGet<{ domains: string[] }>(
+      `/api/pivot/domainsdb?domain=${encodeURIComponent(value)}&limit=100`
+    );
+    if (res.ok) {
+      setDomainsdbData(res.data);
+      setDomainsdbStatus(null);
+      const urls = (res.data.domains || []).map((host) => normalizeHostUrl(host)).filter(Boolean);
+      if (urls.length > 0) {
+        await queuePivotUrls(urls, tr("DomainsDB", "DomainsDB", lang), 200);
+      }
+    } else {
+      setDomainsdbStatus(res.error);
+    }
+  };
+
+  const startSpider = async () => {
+    const url = data?.target?.url ? String(data.target.url) : "";
+    if (!url) return;
+    setSpiderStatus(tr("Spider queued...", "Spider in coda...", lang));
+    const res = await safePost<{ job_id: number }>("/api/spider/manual", {
+      url,
+      max_pages: spiderMaxPages,
+      max_depth: spiderMaxDepth,
+      use_sitemap: spiderUseSitemap
+    });
+    if (res.ok) {
+      setSpiderJobId(res.data.job_id);
+      setSpiderStatus(tr(`Spider job queued (#${res.data.job_id}).`, `Spider in coda (#${res.data.job_id}).`, lang));
+    } else {
+      setSpiderStatus(res.error);
+    }
+  };
+
+  const stopSpider = async () => {
+    if (!spiderJobId) return;
+    setSpiderStatus(tr("Stopping spider...", "Stop spider in corso...", lang));
+    const res = await safePost(`/api/jobs/${spiderJobId}/stop`, {});
+    if (res.ok) {
+      setSpiderStatus(tr("Spider stopped.", "Spider fermato.", lang));
+    } else {
+      setSpiderStatus(res.error);
     }
   };
 
@@ -642,11 +773,59 @@ export default function LabTab() {
                 {tr("Rescan target URL", "Riscansiona URL target", lang)}
               </button>
             )}
+            {data.target?.domain && (
+              <button onClick={() => runCrtshPivot(String(data.target?.domain))} className="secondary">
+                {tr("CRT.sh Subdomains", "Sottodomini CRT.sh", lang)}
+              </button>
+            )}
+            {data.target?.domain && (
+              <button onClick={() => runDomainsdbPivot(String(data.target?.domain))} className="secondary">
+                DomainsDB
+              </button>
+            )}
             <button onClick={deleteTarget} className="secondary danger" title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}>
               {tr("Delete target", "Elimina target", lang)}
             </button>
             {actionStatus && <span className="status">{actionStatus}</span>}
             {jobStatus && <span className="status">{jobStatus}</span>}
+          </div>
+          <div className="panel" style={{ marginBottom: "12px" }}>
+            <h3>{tr("Manual Spider", "Spider Manuale", lang)}</h3>
+            <div className="form-grid">
+              <label>
+                {tr("Max pages", "Max pagine", lang)}
+                <input
+                  type="number"
+                  min={1}
+                  value={spiderMaxPages}
+                  onChange={(e) => setSpiderMaxPages(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                {tr("Max depth", "Profondita max", lang)}
+                <input
+                  type="number"
+                  min={0}
+                  value={spiderMaxDepth}
+                  onChange={(e) => setSpiderMaxDepth(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                {tr("Use sitemap", "Usa sitemap", lang)}
+                <input
+                  type="checkbox"
+                  checked={spiderUseSitemap}
+                  onChange={(e) => setSpiderUseSitemap(e.target.checked)}
+                />
+              </label>
+              <button onClick={startSpider}>{tr("Start Spider", "Avvia Spider", lang)}</button>
+              {spiderJobId && (
+                <button className="secondary" onClick={stopSpider}>
+                  {tr("Stop Spider", "Ferma Spider", lang)}
+                </button>
+              )}
+            </div>
+            {spiderStatus && <div className="muted">{spiderStatus}</div>}
           </div>
           <div className="hash-grid">
             <div className="hash-card">
@@ -863,6 +1042,18 @@ export default function LabTab() {
                   <span>#{ind.id}</span>
                   <span>{ind.kind}</span>
                   <span className="hash-value">{ind.value}</span>
+                  <div className="row-actions">
+                    {ind.kind === "wallet" && (
+                      <button className="secondary" onClick={() => runBlockcypherPivot(String(ind.value))}>
+                        Blockcypher
+                      </button>
+                    )}
+                    {ind.kind === "email" && (
+                      <button className="secondary" onClick={() => runHolehePivot(String(ind.value))}>
+                        Holehe
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1022,6 +1213,82 @@ export default function LabTab() {
               ) : (
                 <pre>{JSON.stringify(pivot.urlscan, null, 2)}</pre>
               )}
+            </div>
+          )}
+          {crtshStatus && <div className="muted">{crtshStatus}</div>}
+          {crtshData && (
+            <div className="pivot-results">
+              <h4>{tr("CRT.sh Subdomains", "Sottodomini CRT.sh", lang)}</h4>
+              {(crtshData.subdomains || []).length === 0 ? (
+                <div className="muted">{tr("No subdomains found.", "Nessun sottodominio trovato.", lang)}</div>
+              ) : (
+                <div className="table">
+                  {(crtshData.subdomains || []).slice(0, 200).map((host: string) => (
+                    <div key={host} className="row simple-row">
+                      <span className="hash-value">{host}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {domainsdbStatus && <div className="muted">{domainsdbStatus}</div>}
+          {domainsdbData && (
+            <div className="pivot-results">
+              <h4>DomainsDB</h4>
+              {(domainsdbData.domains || []).length === 0 ? (
+                <div className="muted">{tr("No domains found.", "Nessun dominio trovato.", lang)}</div>
+              ) : (
+                <div className="table">
+                  {(domainsdbData.domains || []).slice(0, 200).map((host: string) => (
+                    <div key={host} className="row simple-row">
+                      <span className="hash-value">{host}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {blockcypherStatus && <div className="muted">{blockcypherStatus}</div>}
+          {blockcypherData && (
+            <div className="pivot-results">
+              <h4>Blockcypher</h4>
+              {blockcypherData.warning && <div className="muted">{blockcypherData.warning}</div>}
+              {blockcypherData.summary && (
+                <div className="muted">
+                  <div>{tr("Chain", "Chain", lang)}: {blockcypherData.chain || "-"}</div>
+                  <div>{tr("Total received", "Totale ricevuto", lang)}: {blockcypherData.summary.total_received ?? "-"}</div>
+                  <div>{tr("Total sent", "Totale inviato", lang)}: {blockcypherData.summary.total_sent ?? "-"}</div>
+                  <div>{tr("Balance", "Bilancio", lang)}: {blockcypherData.summary.balance ?? "-"}</div>
+                  <div>{tr("Transactions", "Transazioni", lang)}: {blockcypherData.summary.tx_count ?? "-"}</div>
+                </div>
+              )}
+              {blockcypherData.related_addresses && blockcypherData.related_addresses.length > 0 && (
+                <>
+                  <h4>{tr("Related Addresses", "Indirizzi correlati", lang)}</h4>
+                  <div className="table">
+                    {blockcypherData.related_addresses.slice(0, 200).map((addr: string) => (
+                      <div key={addr} className="row simple-row">
+                        <span className="hash-value">{addr}</span>
+                        <div className="row-actions">
+                          <button onClick={() => runBlockcypherPivot(addr)}>{tr("Pivot", "Pivot", lang)}</button>
+                          <button className="secondary" onClick={() => markIoc("wallet", addr, "blockcypher")}>
+                            {tr("IOC", "IOC", lang)}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {holeheStatus && <div className="muted">{holeheStatus}</div>}
+          {holeheData && (
+            <div className="pivot-results">
+              <h4>Holehe</h4>
+              {holeheData.warning && <div className="muted">{holeheData.warning}</div>}
+              <pre>{JSON.stringify(holeheData.results || holeheData, null, 2)}</pre>
             </div>
           )}
           <h3>{tr("Signature Matches", "Match Firme", lang)}</h3>

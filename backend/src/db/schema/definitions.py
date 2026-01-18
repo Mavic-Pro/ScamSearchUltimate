@@ -1,4 +1,4 @@
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 TABLES = {
     "schema_version": {
@@ -175,6 +175,27 @@ TABLES = {
         "confidence": "int",
         "created_at": "timestamptz NOT NULL",
     },
+    "automations": {
+        "id": "bigserial PRIMARY KEY",
+        "name": "text NOT NULL",
+        "enabled": "boolean NOT NULL DEFAULT true",
+        "trigger_type": "text NOT NULL",
+        "trigger_config": "jsonb NOT NULL",
+        "graph": "jsonb NOT NULL",
+        "last_run_at": "timestamptz",
+        "created_at": "timestamptz NOT NULL",
+        "updated_at": "timestamptz NOT NULL",
+    },
+    "automation_runs": {
+        "id": "bigserial PRIMARY KEY",
+        "automation_id": "bigint NOT NULL",
+        "status": "text NOT NULL",
+        "reason": "text",
+        "context": "jsonb",
+        "log": "jsonb",
+        "started_at": "timestamptz NOT NULL",
+        "finished_at": "timestamptz",
+    },
     "urlscan_remote": {
         "id": "bigserial PRIMARY KEY",
         "url": "text NOT NULL",
@@ -206,6 +227,8 @@ INDEXES = {
     "signatures": ["enabled"],
     "alert_rules": ["enabled"],
     "graph_nodes": ["kind", "value"],
+    "automations": ["enabled", "trigger_type"],
+    "automation_runs": ["automation_id"],
     "urlscan_local": ["domain", "dom_hash", "headers_hash", "ip", "jarm", "favicon_hash"],
     "hunt_runs": ["hunt_id"],
     "urlscan_remote": ["url"],

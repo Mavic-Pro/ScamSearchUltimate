@@ -22,9 +22,11 @@ Think of it as a radar that looks for suspicious sites and groups similar ones t
 ## 0.0) Recent additions
 - Redirect chains in Urlscan/Lab with “save as IOC” actions.
 - AI Chat supports multiple Target IDs and pivot suggestions.
-- Auto-run hunts with scheduler log and playbooks.
+- Auto-run hunts with scheduler log.
 - Timeline + diff view in Lab.
 - System health checks and update notifications.
+- Automation workflows with event/schedule triggers and visual graph editor.
+- New pivots: Blockcypher, CRT.sh, DomainsDB, Holehe, plus manual spider.
 
 ## 0.1) Basic glossary (simple words)
 
@@ -78,6 +80,7 @@ API keys enable external discovery:
 Other settings:
 - Update checks (GitHub repo);
 - Auto-run hunts (scheduler);
+- Auto-run automations (scheduler);
 - Confidence filter for matches.
 
 How to set keys:
@@ -110,7 +113,24 @@ Only enable if you understand the risks.
 
 ---
 
-## 3) Scan (Scan tab) - What it does
+## 3) Automation (Automation tab) - What it does
+
+Automation is a visual workflow builder for conditional pivoting and job orchestration.
+
+Core concepts:
+- **Trigger**: manual, event (e.g. `scan_done`), or schedule (interval seconds).
+- **Graph**: nodes and edges with conditions (always/true/false/regex/equals/gte/lte).
+- **Dry run**: preview without queueing jobs.
+
+Common nodes:
+- `queue_scan`, `spider`
+- `pivot_crtsh`, `pivot_domainsdb`, `pivot_blockcypher`, `pivot_holehe`
+- `select_indicators`, `save_iocs`, `normalize`, `dedupe`, `filter_regex`
+- `webhook` for external calls
+
+Playbooks live here (Scan/Hunt presets were moved to Automation).
+
+## 4) Scan (Scan tab) - What it does
 
 Scan is the core. You can submit:
 - a direct URL;
@@ -119,7 +139,7 @@ Scan is the core. You can submit:
 
 The system creates jobs in a queue and processes them.
 
-### 3.1 Manual URL scan
+### 4.1 Manual URL scan
 
 1. Open **Scan**.
 2. URL field: `https://example.com`.
@@ -135,14 +155,14 @@ What happens internally:
 - creates/updates campaigns.
 - attempts screenshots (Playwright if enabled).
 
-### 3.2 Keyword scan (discovery)
+### 4.2 Keyword scan (discovery)
 
 1. Keyword: example `"paypal" login`.
 2. Click **Start Scan**.
 3. It uses SerpAPI + DuckDuckGo to find URLs.
 4. Those URLs become queued jobs.
 
-### 3.3 FOFA scan
+### 4.3 FOFA scan
 
 1. FOFA Query field.
 2. Example defensive queries:
@@ -154,7 +174,7 @@ What happens internally:
 
 ---
 
-## 4) Queue - What to watch
+## 5) Queue - What to watch
 
 The queue shows:
 - job id;
@@ -166,9 +186,9 @@ If a job is stuck, the system requeues it automatically.
 
 ---
 
-## 5) Hunt (Hunt tab) - What it does
+## 6) Hunt (Hunt tab) - What it does
 
-Hunt is for repeated discovery with TTL and budgets. You can auto-run enabled hunts and save playbooks for reuse.
+Hunt is for repeated discovery with TTL and budgets. You can auto-run enabled hunts.
 
 Fields:
 - **Name**: label;
@@ -178,7 +198,7 @@ Fields:
 - **Delay**: time between loops;
 - **Budget**: max results.
 
-### 5.1 Dork hunting
+### 6.1 Dork hunting
 
 Simple examples:
 - `site:example.com "login"`
@@ -194,7 +214,7 @@ Steps:
 2. Rule: paste query
 3. Click **Run Hunt**
 
-### 5.2 FOFA hunting
+### 6.2 FOFA hunting
 
 Examples:
 - `title="login" && country="FR" && body="secure"`
@@ -208,7 +228,7 @@ Steps:
 2. Rule: query
 3. Run Hunt
 
-### 5.3 urlscan hunting
+### 6.3 urlscan hunting
 
 Example:
 - `domain:"example.com" AND page.title:"login"`
@@ -220,7 +240,7 @@ Steps:
 
 ---
 
-## 6) Campaigns (Campaigns tab) - What it does
+## 7) Campaigns (Campaigns tab) - What it does
 
 Campaigns cluster similar targets by:
 - DOM hash;
@@ -235,7 +255,7 @@ Steps:
 
 ---
 
-## 7) Lab (Lab tab) - What it does
+## 8) Lab (Lab tab) - What it does
 
 Lab shows full target detail.
 
@@ -249,11 +269,11 @@ Steps:
    - signature matches;
    - redirect chains, timeline, and diffs.
 
-This is where you decide SAFE vs MALICIOUS.
+This is where you decide SAFE vs MALICIOUS. It also exposes pivots (Blockcypher, CRT.sh, DomainsDB, Holehe) and a manual spider.
 
 ---
 
-## 8) Signatures (Signatures tab) - What it does
+## 9) Signatures (Signatures tab) - What it does
 
 Signatures are regex patterns applied to html/headers/url/assets.
 
@@ -275,7 +295,7 @@ Steps:
 
 ---
 
-## 9) YARA (YARA tab) - What it does
+## 10) YARA (YARA tab) - What it does
 
 YARA rules let you search for advanced patterns. Useful to:
 - detect suspicious strings in HTML;
@@ -291,7 +311,7 @@ Steps:
 
 ---
 
-## 10) Alerts (Alerts tab) - What it does
+## 11) Alerts (Alerts tab) - What it does
 
 Alerts are created when:
 - risk score is high;
@@ -306,7 +326,7 @@ Steps:
 
 ---
 
-## 11) Urlscan Local (Urlscan tab) - What it does
+## 12) Urlscan Local (Urlscan tab) - What it does
 
 This tab is a "local urlscan": it does not need internet, it uses your DB.
 
@@ -325,7 +345,7 @@ Steps:
 
 ---
 
-## 12) Graph (Graph tab) - What it does
+## 13) Graph (Graph tab) - What it does
 
 Graph shows Maltego-style relationships.
 
@@ -337,7 +357,7 @@ Steps:
 
 ---
 
-## 13) Export (Export tab) - What it does
+## 14) Export (Export tab) - What it does
 
 - **CSV**: table of targets.
 - **JSON graph**: nodes and edges.
@@ -351,7 +371,7 @@ Steps:
 
 ---
 
-## 14) AI Chat (AI tab) - What it does
+## 15) AI Chat (AI tab) - What it does
 
 AI chat is optional. If no provider is configured, the app still provides basic suggestions.
 
@@ -373,7 +393,7 @@ Optional: you can provide target context (full DOM + saved IOC) for better answe
 
 ---
 
-## 15) IOCs (IOCs tab) - What it does
+## 16) IOCs (IOCs tab) - What it does
 
 This tab stores the indicators you marked (hash, URL, domain).
 
@@ -384,7 +404,7 @@ You can:
 
 ---
 
-## 16) Quick tab tour (what to click)
+## 17) Quick tab tour (what to click)
 
 1. **Scan**: paste a URL and click **Start Scan**.
 2. **Hunt**: add a rule (dork/fofa/urlscan) and **Run Hunt**.
@@ -397,12 +417,13 @@ You can:
 9. **Export**: download CSV and JSON graph.
 10. **YARA**: save YARA rules.
 11. **AI Chat**: generate rules and create with one click.
-12. **IOCs**: filter and export.
-13. **Settings**: save keys and options.
+12. **Automation**: create workflows and playbooks.
+13. **IOCs**: filter and export.
+14. **Settings**: save keys and options.
 
 ---
 
-## 17) Common errors (simple explanations)
+## 18) Common errors (simple explanations)
 
 - **Failed to fetch**: frontend cannot reach backend.
   - Fix: start backend and check `docker compose ps`.
@@ -412,7 +433,7 @@ You can:
 
 ---
 
-## 18) Advanced troubleshooting (clear steps)
+## 19) Advanced troubleshooting (clear steps)
 
 - **Failed to fetch**: frontend cannot reach backend.
   - Fix: run `docker compose ps` and `docker compose logs -f backend`.
@@ -425,7 +446,7 @@ You can:
 
 ---
 
-## 19) Real scenarios (step by step)
+## 20) Real scenarios (step by step)
 
 ### Scenario A: Bank login clone
 
@@ -454,7 +475,7 @@ You can:
 
 ---
 
-## 20) Final checklist
+## 21) Final checklist
 
 - [ ] DB ok or repaired
 - [ ] Settings saved

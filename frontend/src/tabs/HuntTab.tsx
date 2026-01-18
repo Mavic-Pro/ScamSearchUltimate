@@ -39,11 +39,7 @@ export default function HuntTab() {
   const [queueNotice, setQueueNotice] = React.useState<string | null>(null);
   const queueTimer = React.useRef<number | null>(null);
   const [runs, setRuns] = React.useState<Array<Record<string, any>>>([]);
-  const [playbookName, setPlaybookName] = React.useState("");
-  const [playbooks, setPlaybooks] = React.useState<Array<Record<string, string>>>(() => {
-    const raw = localStorage.getItem("hunt_playbooks");
-    return raw ? JSON.parse(raw) : [];
-  });
+  // Playbooks moved to Automation tab.
 
   const loadHunts = async () => {
     const res = await safeGet<Hunt[]>("/api/hunt");
@@ -133,64 +129,7 @@ export default function HuntTab() {
     }
   };
 
-  const runPlaybook = async (pb: { name: string; rule_type: string; rule: string }) => {
-    setName(pb.name);
-    setRuleType(pb.rule_type);
-    setRule(pb.rule);
-    await handleRun();
-  };
-
-  const savePlaybook = () => {
-    if (!playbookName.trim()) {
-      setStatus(tr("Playbook name is required.", "Nome playbook richiesto.", lang));
-      return;
-    }
-    if (!rule.trim()) {
-      setStatus(tr("Rule is required.", "Regola richiesta.", lang));
-      return;
-    }
-    const next = [
-      { name: playbookName.trim(), rule_type: ruleType, rule: rule.trim() },
-      ...playbooks.filter((pb) => pb.name !== playbookName.trim())
-    ];
-    setPlaybooks(next);
-    localStorage.setItem("hunt_playbooks", JSON.stringify(next));
-    setStatus(tr("Playbook saved.", "Playbook salvato.", lang));
-    setPlaybookName("");
-  };
-
-  const removePlaybook = (name: string) => {
-    const next = playbooks.filter((pb) => pb.name !== name);
-    setPlaybooks(next);
-    localStorage.setItem("hunt_playbooks", JSON.stringify(next));
-  };
-
-  const exportPlaybooks = () => {
-    const blob = new Blob([JSON.stringify(playbooks, null, 2)], { type: "application/json" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "hunt-playbooks.json";
-    link.click();
-  };
-
-  const importPlaybooks = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || "[]"));
-        if (!Array.isArray(parsed)) {
-          setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
-          return;
-        }
-        setPlaybooks(parsed);
-        localStorage.setItem("hunt_playbooks", JSON.stringify(parsed));
-        setStatus(tr("Playbooks imported.", "Playbook importati.", lang));
-      } catch (err) {
-        setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
-      }
-    };
-    reader.readAsText(file);
-  };
+  // Playbooks moved to Automation tab.
 
   const handleRunSaved = async (huntId: number) => {
     const res = await safePost<HuntRunResponse>(`/api/hunt/run/${huntId}`, {});
@@ -263,6 +202,9 @@ export default function HuntTab() {
       <div className="tab-header">
         <h2>{tr("Hunt", "Hunt", lang)}</h2>
         <p>{tr("Automatic and manual rules with budget and scheduling.", "Regole automatiche e manuali con budget e scheduling.", lang)}</p>
+        <div className="muted">
+          {tr("Playbooks moved to Automation.", "Playbook spostati in Automazione.", lang)}
+        </div>
       </div>
       {error && <ErrorBanner message={error} onRepaired={loadHunts} />}
       <div className="panel">
@@ -362,47 +304,8 @@ export default function HuntTab() {
             {tr("Wallet Drainer", "Wallet Drainer", lang)}
           </button>
         </div>
-        {aiStatus && <div className="muted">{aiStatus}</div>}
-        {aiReply && <div className="muted">{aiReply}</div>}
-      </div>
-      <div className="panel">
-        <h3>{tr("Playbooks", "Playbook", lang)}</h3>
-        <div className="form-grid">
-          <label>
-            {tr("Playbook name", "Nome playbook", lang)}
-            <input value={playbookName} onChange={(e) => setPlaybookName(e.target.value)} />
-          </label>
-          <button onClick={savePlaybook} className="secondary">{tr("Save Playbook", "Salva playbook", lang)}</button>
-        </div>
-        <div className="row-actions">
-          <button className="secondary" onClick={exportPlaybooks}>{tr("Export", "Export", lang)}</button>
-          <input
-            id="hunt-playbook-import"
-            type="file"
-            accept="application/json"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) importPlaybooks(file);
-            }}
-            style={{ display: "none" }}
-          />
-          <label className="secondary" htmlFor="hunt-playbook-import">
-            {tr("Import", "Import", lang)}
-          </label>
-        </div>
-        <div className="table">
-          {playbooks.map((pb) => (
-            <div key={pb.name} className="row">
-              <span>{pb.name}</span>
-              <span>{pb.rule_type}</span>
-              <span className="truncate">{pb.rule}</span>
-              <div className="row-actions">
-                <button className="secondary" onClick={() => runPlaybook(pb)}>{tr("Run", "Avvia", lang)}</button>
-                <button className="secondary danger" onClick={() => removePlaybook(pb.name)}>{tr("Delete", "Elimina", lang)}</button>
-              </div>
-            </div>
-          ))}
-        </div>
+      {aiStatus && <div className="muted">{aiStatus}</div>}
+      {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

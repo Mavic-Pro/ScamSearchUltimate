@@ -16,6 +16,7 @@ import SignaturesTab from "./tabs/SignaturesTab";
 import UrlscanTab from "./tabs/UrlscanTab";
 import AiChatTab from "./tabs/AiChatTab";
 import YaraTab from "./tabs/YaraTab";
+import AutomationTab from "./tabs/AutomationTab";
 import { getLang, setLang, t, Lang } from "./i18n";
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
     { key: "graph", label: t("tab_graph", lang), component: <GraphTab /> },
     { key: "export", label: t("tab_export", lang), component: <ExportTab /> },
     { key: "ai", label: t("tab_ai", lang), component: <AiChatTab /> },
+    { key: "automation", label: t("tab_automation", lang), component: <AutomationTab /> },
     { key: "settings", label: t("tab_settings", lang), component: <SettingsTab /> }
   ];
   const current = tabs.find((tab) => tab.key === active) || tabs[0];

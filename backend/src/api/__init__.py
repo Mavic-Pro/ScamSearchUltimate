@@ -14,11 +14,13 @@ from backend.src.api.scan import router as scan_router
 from backend.src.api.settings import router as settings_router
 from backend.src.api.signatures import router as signatures_router
 from backend.src.api.pivot import router as pivot_router
+from backend.src.api.spider import router as spider_router
 from backend.src.api.urlscan_local import router as urlscan_router
 from backend.src.api.ai import router as ai_router
 from backend.src.api.iocs import router as iocs_router
 from backend.src.api.targets import router as targets_router
 from backend.src.api.yara import router as yara_router
+from backend.src.api.automations import router as automations_router
 from backend.src.api.update import router as update_router
 
 api_router = APIRouter()
@@ -36,9 +38,11 @@ api_router.include_router(signatures_router)
 api_router.include_router(alerts_router)
 api_router.include_router(campaigns_router)
 api_router.include_router(pivot_router)
+api_router.include_router(spider_router)
 api_router.include_router(urlscan_router)
 api_router.include_router(ai_router)
 api_router.include_router(iocs_router)
 api_router.include_router(targets_router)
 api_router.include_router(yara_router)
+api_router.include_router(automations_router)
 api_router.include_router(update_router)

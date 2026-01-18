@@ -178,6 +178,27 @@ Schema version is stored in `schema_version`.
 - confidence (int)
 - created_at (timestamp)
 
+### automations
+- id (bigserial, PK)
+- name (text)
+- enabled (bool)
+- trigger_type (text) manual/event/schedule
+- trigger_config (jsonb)
+- graph (jsonb)
+- last_run_at (timestamp)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+### automation_runs
+- id (bigserial, PK)
+- automation_id (bigint, FK)
+- status (text) RUNNING/DONE/FAILED
+- reason (text)
+- context (jsonb)
+- log (jsonb)
+- started_at (timestamp)
+- finished_at (timestamp)
+
 ### urlscan_local
 - id (bigserial, PK)
 - target_id (bigint, FK)
@@ -214,3 +235,5 @@ Schema version is stored in `schema_version`.
 - `settings` stores encrypted values; the encryption key comes from `APP_SECRET_KEY`.
 - `iocs` stores manually marked indicators with their related target context.
 - `yara_rules` and `yara_matches` store YARA rules and their matches on HTML/assets.
+- `automations` stores visual workflows (graph JSON) and trigger settings.
+- `automation_runs` stores execution logs and outcomes.

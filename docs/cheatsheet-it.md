@@ -28,6 +28,7 @@ Apri `http://localhost:5173`.
 2. **Avvia Scan**.
 3. **Queue**: attendi DONE.
 4. **Lab**: carica target e controlla hash/indicatori/screenshot.
+5. **Lab**: usa i pivot (Blockcypher, CRT.sh, DomainsDB, Holehe) o lo spider manuale.
 
 ### 2) Dork hunting (ricerca su web)
 1. **Hunt**: tipo `dork`.
@@ -47,6 +48,7 @@ Apri `http://localhost:5173`.
 
 - Le dork si usano **solo in Hunt**.
 - Scan e' per URL, keyword, o query FOFA.
+- I playbook sono in **Automazione**.
 
 ---
 
@@ -56,6 +58,7 @@ Apri `http://localhost:5173`.
 - **Hunt**: regole ripetute con TTL/budget + auto-run.
 - **Urlscan**: ricerca locale su scansioni + redirect chain.
 - **Lab**: dettagli target + timeline/diff.
+- **Automazione**: playbook + workflow grafico.
 - **Campaigns**: cluster di siti simili.
 - **Signatures**: regex e ricerca DB.
 - **Alerts**: eventi, storico e regole custom.

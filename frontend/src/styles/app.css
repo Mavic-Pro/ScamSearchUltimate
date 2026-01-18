@@ -586,6 +586,80 @@ button.danger {
   font-size: 12px;
 }
 
+.automation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.automation-canvas {
+  position: relative;
+  height: 520px;
+  background: rgba(10, 12, 18, 0.7);
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.automation-viewport {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.automation-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.automation-edge {
+  stroke: rgba(148, 163, 184, 0.7);
+  stroke-width: 2;
+}
+
+.automation-node {
+  position: absolute;
+  width: 180px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(22, 26, 36, 0.95);
+  cursor: grab;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+}
+
+.automation-node.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+}
+
+.automation-node:active {
+  cursor: grabbing;
+}
+
+.automation-node .node-title {
+  font-weight: 600;
+}
+
+.automation-node .node-type {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.automation-selection {
+  position: absolute;
+  border: 1px dashed rgba(56, 189, 248, 0.9);
+  background: rgba(56, 189, 248, 0.12);
+  pointer-events: none;
+}
+
 .legend.domain::before,
 .legend.url::before,
 .legend.dom::before {

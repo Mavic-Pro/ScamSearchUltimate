@@ -22,9 +22,11 @@ Pensa al tool come a un radar che cerca siti sospetti e poi li raggruppa per som
 ## 0.0) Novita recenti
 - Redirect chain in Urlscan/Lab con salvataggio IOC.
 - AI Chat con piu Target ID e pivot suggeriti.
-- Auto-run hunt con log scheduler e playbook.
+- Auto-run hunt con log scheduler.
 - Timeline e diff in Lab.
 - Health check e notifiche update.
+- Automazioni con trigger event/schedule e editor grafico.
+- Nuovi pivot: Blockcypher, CRT.sh, DomainsDB, Holehe, piu' spider manuale.
 
 ## 0.1) Glossario base (parole semplici)
 
@@ -79,6 +81,7 @@ Le API key servono per fare discovery su servizi esterni:
 Altre impostazioni:
 - update check (repo GitHub);
 - auto-run hunt (scheduler);
+- auto-run automazioni (scheduler);
 - filtro confidenza match.
 
 Come inserire le chiavi:
@@ -111,7 +114,24 @@ E' una scelta consapevole: abilitala solo se sai cosa stai facendo.
 
 ---
 
-## 3) Scan (Tab Scan) - Cosa fa
+## 3) Automazione (tab Automazione) - Cosa fa
+
+Automazione e' un workflow visuale per pivoting condizionale e orchestrazione job.
+
+Concetti base:
+- **Trigger**: manuale, evento (es. `scan_done`), o schedule (interval seconds).
+- **Grafo**: nodi/edge con condizioni (always/true/false/regex/equals/gte/lte).
+- **Dry run**: anteprima senza mettere job in coda.
+
+Nodi comuni:
+- `queue_scan`, `spider`
+- `pivot_crtsh`, `pivot_domainsdb`, `pivot_blockcypher`, `pivot_holehe`
+- `select_indicators`, `save_iocs`, `normalize`, `dedupe`, `filter_regex`
+- `webhook` per chiamate esterne
+
+I playbook stanno qui (Scan/Hunt spostati in Automazione).
+
+## 4) Scan (Tab Scan) - Cosa fa
 
 Lo scan e' il cuore del tool. Puoi inserire:
 - un URL diretto;
@@ -120,7 +140,7 @@ Lo scan e' il cuore del tool. Puoi inserire:
 
 Il sistema crea job in coda e li processa uno alla volta.
 
-### 3.1 Scan manuale di un URL
+### 4.1 Scan manuale di un URL
 
 1. Vai su **Scan**.
 2. Campo URL: inserisci `https://example.com`.
@@ -136,14 +156,14 @@ Cosa succede dietro:
 - crea/aggiorna campagne.
  - tenta lo screenshot (Playwright se abilitato).
 
-### 3.2 Scan con keyword (discovery)
+### 4.2 Scan con keyword (discovery)
 
 1. Campo Keyword: esempio `"paypal" login`.
 2. Premi **Avvia Scan**.
 3. Il tool usa SerpAPI + DuckDuckGo per trovare URL.
 4. I risultati diventano job in coda.
 
-### 3.3 Scan con FOFA
+### 4.3 Scan con FOFA
 
 1. Campo FOFA Query.
 2. Esempi reali di query usate spesso in difesa:
@@ -155,7 +175,7 @@ Cosa succede dietro:
 
 ---
 
-## 4) Queue (coda lavori) - Cosa vedere
+## 5) Queue (coda lavori) - Cosa vedere
 
 La Queue mostra:
 - ID job;
@@ -167,9 +187,9 @@ Se un job resta bloccato, il sistema fa requeue automatico.
 
 ---
 
-## 5) Hunt (Tab Hunt) - Cosa fa
+## 6) Hunt (Tab Hunt) - Cosa fa
 
-Hunt e' per regole ripetute nel tempo, con budget e TTL. Puoi abilitare auto-run e usare playbook.
+Hunt e' per regole ripetute nel tempo, con budget e TTL. Puoi abilitare auto-run.
 
 Campi principali:
 - **Nome**: etichetta regola;
@@ -179,7 +199,7 @@ Campi principali:
 - **Delay**: intervallo tra loop;
 - **Budget**: massimo risultati.
 
-### 5.1 Dork (ricerca web)
+### 6.1 Dork (ricerca web)
 
 Esempi semplici:
 - `site:example.com "login"`
@@ -195,7 +215,7 @@ Passi:
 2. Regola: inserisci query
 3. **Avvia Hunt**
 
-### 5.2 FOFA hunting
+### 6.2 FOFA hunting
 
 Esempi reali:
 - `title="login" && country="FR" && body="secure"`
@@ -209,7 +229,7 @@ Passi:
 2. Regola: query
 3. Avvia Hunt
 
-### 5.3 urlscan hunting
+### 6.3 urlscan hunting
 
 Esempio:
 - `domain:"example.com" AND page.title:"login"`
@@ -221,7 +241,7 @@ Passi:
 
 ---
 
-## 6) Campaigns (Tab Campaigns) - Cosa fa
+## 7) Campaigns (Tab Campaigns) - Cosa fa
 
 Campaigns raggruppa siti simili:
 - stesso DOM hash;
@@ -236,7 +256,7 @@ Come usarlo:
 
 ---
 
-## 7) Lab (Tab Lab) - Cosa fa
+## 8) Lab (Tab Lab) - Cosa fa
 
 Lab mostra il dettaglio di un target.
 
@@ -250,11 +270,11 @@ Passi:
    - signature match;
    - redirect chain, timeline e diff.
 
-Qui puoi decidere se il target e' SAFE o MALICIOUS (workflow interno).
+Qui puoi decidere se il target e' SAFE o MALICIOUS (workflow interno). Include anche pivot (Blockcypher, CRT.sh, DomainsDB, Holehe) e spider manuale.
 
 ---
 
-## 8) Signatures (Tab Signatures) - Cosa fa
+## 9) Signatures (Tab Signatures) - Cosa fa
 
 Le signatures sono regex che cercano pattern.
 
@@ -276,7 +296,7 @@ Passi:
 
 ---
 
-## 9) YARA (Tab YARA) - Cosa fa
+## 10) YARA (Tab YARA) - Cosa fa
 
 YARA serve per definire regole basate su pattern avanzati. E' utile per:
 - trovare stringhe sospette in HTML;
@@ -292,7 +312,7 @@ Passi:
 
 ---
 
-## 10) Alerts (Tab Alerts) - Cosa fa
+## 11) Alerts (Tab Alerts) - Cosa fa
 
 Alerts registra:
 - rischio alto (risk score);
@@ -307,7 +327,7 @@ Passi:
 
 ---
 
-## 11) Urlscan Local (Tab Urlscan) - Cosa fa
+## 12) Urlscan Local (Tab Urlscan) - Cosa fa
 
 Questa tab e' una "urlscan locale": non serve internet, usa i dati del tuo DB.
 
@@ -326,7 +346,7 @@ Passi:
 
 ---
 
-## 12) Graph (Tab Graph) - Cosa fa
+## 13) Graph (Tab Graph) - Cosa fa
 
 Graph mostra relazioni tipo Maltego.
 
@@ -338,7 +358,7 @@ Passi:
 
 ---
 
-## 13) Export (Tab Export) - Cosa fa
+## 14) Export (Tab Export) - Cosa fa
 
 - **CSV**: lista risultati.
 - **JSON graph**: nodi e edges.
@@ -352,7 +372,7 @@ Passi:
 
 ---
 
-## 14) AI Chat (Tab AI) - Cosa fa
+## 15) AI Chat (Tab AI) - Cosa fa
 
 La chat AI e' opzionale. Se non imposti un provider, il sistema usa suggerimenti base.
 
@@ -374,7 +394,7 @@ Opzionale: puoi fornire il contesto del target (DOM completo + IOC salvati) per 
 
 ---
 
-## 15) IOCs (Tab IOCs) - Cosa fa
+## 16) IOCs (Tab IOCs) - Cosa fa
 
 Qui trovi gli indicatori che hai marcato (hash, URL, dominio).
 
@@ -385,7 +405,7 @@ Puoi:
 
 ---
 
-## 16) Tour rapido delle tab (cosa cliccare)
+## 17) Tour rapido delle tab (cosa cliccare)
 
 1. **Scan**: inserisci URL e clicca **Avvia Scan**.
 2. **Hunt**: crea regola (dork/fofa/urlscan) e **Avvia Hunt**.
@@ -398,12 +418,13 @@ Puoi:
 9. **Export**: scarica CSV e JSON grafo.
 10. **YARA**: salva regole YARA.
 11. **AI Chat**: genera regole e crea con un click.
-12. **IOCs**: filtra ed esporta.
-13. **Settings**: salva chiavi e opzioni.
+12. **Automazione**: crea workflow e playbook.
+13. **IOCs**: filtra ed esporta.
+14. **Settings**: salva chiavi e opzioni.
 
 ---
 
-## 17) Errori comuni (spiegati semplice)
+## 18) Errori comuni (spiegati semplice)
 
 - **Failed to fetch**: frontend non raggiunge backend.
   - Soluzione: avvia backend e controlla `docker compose ps`.
@@ -413,7 +434,7 @@ Puoi:
 
 ---
 
-## 18) Troubleshooting avanzato (passi chiari)
+## 19) Troubleshooting avanzato (passi chiari)
 
 - **Failed to fetch**: il frontend non raggiunge il backend.
   - Soluzione: `docker compose ps` e `docker compose logs -f backend`.
@@ -426,7 +447,7 @@ Puoi:
 
 ---
 
-## 19) Scenari reali (passo a passo)
+## 20) Scenari reali (passo a passo)
 
 ### Scenario A: Clone di login bancario
 
@@ -455,7 +476,7 @@ Puoi:
 
 ---
 
-## 20) Checklist finale
+## 21) Checklist finale
 
 - [ ] DB ok o riparato
 - [ ] Settings salvati

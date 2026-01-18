@@ -6,6 +6,7 @@ import { getLang, tr } from "../i18n";
 const KEYS = [
   "FOFA_EMAIL",
   "FOFA_KEY",
+  "BLOCKCYPHER_TOKEN",
   "SERPAPI_KEY",
   "URLSCAN_KEY",
   "AI_PROVIDER",
@@ -14,6 +15,8 @@ const KEYS = [
   "AI_MODEL",
   "HUNT_AUTORUN_ENABLED",
   "HUNT_AUTORUN_POLL_SECONDS",
+  "AUTOMATION_AUTORUN_ENABLED",
+  "AUTOMATION_AUTORUN_POLL_SECONDS",
   "CONFIDENCE_MIN",
   "REMOTE_FAVICON_ENABLED",
   "TAXII_URL",
@@ -399,6 +402,29 @@ export default function SettingsTab() {
             </div>
           </label>
           <label>
+            {tr("Automation Auto-run", "Auto-run Automazioni", lang)}
+            <input
+              type="checkbox"
+              checked={values.AUTOMATION_AUTORUN_ENABLED === "1"}
+              onChange={(e) => setValues({ ...values, AUTOMATION_AUTORUN_ENABLED: e.target.checked ? "1" : "0" })}
+            />
+            <div className="muted">
+              {tr("Runs scheduled automations automatically.", "Esegue automaticamente le automazioni programmate.", lang)}
+            </div>
+          </label>
+          <label>
+            {tr("Automation Poll (sec)", "Poll Automazioni (sec)", lang)}
+            <input
+              type="number"
+              min={5}
+              value={values.AUTOMATION_AUTORUN_POLL_SECONDS || "10"}
+              onChange={(e) => setValues({ ...values, AUTOMATION_AUTORUN_POLL_SECONDS: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Worker checks scheduled automations on this interval.", "Il worker controlla le automazioni programmate a questo intervallo.", lang)}
+            </div>
+          </label>
+          <label>
             {tr("Min Confidence (matches)", "Confidenza min (match)", lang)}
             <input
               type="number"
@@ -411,7 +437,7 @@ export default function SettingsTab() {
               {tr("Default filter for signature/YARA matches.", "Filtro predefinito per match firma/YARA.", lang)}
             </div>
           </label>
-          {KEYS.filter((key) => !["AI_PROVIDER", "AI_ENDPOINT", "AI_KEY", "AI_MODEL", "HUNT_AUTORUN_ENABLED", "HUNT_AUTORUN_POLL_SECONDS", "CONFIDENCE_MIN"].includes(key)).map((key) => (
+          {KEYS.filter((key) => !["AI_PROVIDER", "AI_ENDPOINT", "AI_KEY", "AI_MODEL", "HUNT_AUTORUN_ENABLED", "HUNT_AUTORUN_POLL_SECONDS", "AUTOMATION_AUTORUN_ENABLED", "AUTOMATION_AUTORUN_POLL_SECONDS", "CONFIDENCE_MIN"].includes(key)).map((key) => (
             <label key={key}>
               {key}
               {key === "REMOTE_FAVICON_ENABLED" ? (

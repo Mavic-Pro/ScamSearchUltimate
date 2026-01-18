@@ -2,6 +2,11 @@ from fastapi import APIRouter, Query
 
 from backend.src.core.providers.urlscan import urlscan_search_hash
 from backend.src.core.providers.fofa import fofa_search_verbose
+from backend.src.core.providers.blockcypher import blockcypher_address_summary
+from backend.src.core.providers.crtsh import crtsh_subdomains
+from backend.src.core.providers.domainsdb import domainsdb_search
+from backend.src.core.providers.holehe import holehe_lookup
+from backend.src.core.settings import get_setting_value
 from backend.src.db.connection import connect, load_db_config
 from backend.src.db.dao.assets import find_assets_by_hash
 from backend.src.db.dao.targets import find_targets_by_field
@@ -65,6 +70,35 @@ def reverse_ip(ip: str = Query(...)):
         return ok({"local": local})
     finally:
         conn.close()
+
+
+@router.get("/blockcypher")
+def pivot_blockcypher(address: str = Query(...), limit: int = Query(20, ge=1, le=50)):
+    cfg = load_db_config()
+    conn = connect(cfg)
+    try:
+        data = blockcypher_address_summary(conn, address, limit=limit)
+        return ok(data)
+    finally:
+        conn.close()
+
+
+@router.get("/crtsh")
+def pivot_crtsh(domain: str = Query(...)):
+    data = crtsh_subdomains(domain)
+    return ok({"subdomains": data})
+
+
+@router.get("/holehe")
+def pivot_holehe(email: str = Query(...)):
+    data = holehe_lookup(email)
+    return ok(data)
+
+
+@router.get("/domainsdb")
+def pivot_domainsdb(domain: str = Query(...), limit: int = Query(50, ge=1, le=200)):
+    data = domainsdb_search(domain, limit=limit)
+    return ok(data)
 
 
 def _fofa_query(field: str, value: str) -> str:

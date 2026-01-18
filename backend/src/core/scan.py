@@ -21,6 +21,7 @@ from backend.src.db.dao.signatures import count_matches, insert_match, list_sign
 from backend.src.db.dao.yara_rules import list_yara_rules
 from backend.src.db.dao.yara_matches import insert_yara_match
 from backend.src.db.dao.targets import create_target, update_target
+from backend.src.db.dao.jobs import create_job
 from backend.src.security.safe_fetch import hash_bytes, safe_fetch_asset, safe_fetch_html
 from backend.src.security.screenshot import capture_screenshot
 from backend.src.security.dns import resolve_ip
@@ -140,6 +141,19 @@ def scan_url(conn, url: str) -> Dict[str, object]:
     )
     _assign_campaign(conn, target_id, dom_hash)
     _assign_campaigns_extra(conn, target_id, favicon_hash, jarm, screenshot)
+    risk_score = count_matches(conn, target_id) * 20
+    _emit_automation_event(
+        conn,
+        {
+            "event": "scan_done",
+            "target_id": target_id,
+            "url": url,
+            "domain": domain,
+            "ip": ip,
+            "risk_score": risk_score,
+            "indicators": indicators,
+        },
+    )
 
     log_info(f"scan complete target={target_id} url={url}")
     return {"id": target_id, "status": "DONE"}
@@ -420,6 +434,19 @@ def _save_full_html(target_id: int, html: str) -> str | None:
 def _storage_path(subdir: str) -> Path:
     base = os.getenv("STORAGE_DIR", "storage")
     return Path(base) / subdir
+
+
+def _emit_automation_event(conn, payload: dict) -> None:
+    indicators = payload.get("indicators") or []
+    indicators = [[kind, value] for kind, value in indicators]
+    grouped: dict[str, list[str]] = {}
+    for kind, value in indicators:
+        grouped.setdefault(kind, []).append(value)
+    payload["indicator_map"] = grouped
+    payload["emails"] = grouped.get("email", [])
+    payload["wallets"] = grouped.get("wallet", [])
+    payload["phones"] = grouped.get("phone", [])
+    create_job(conn, "automation_event", {"event": payload.get("event"), "payload": payload})
 
 
 def _extract_favicon_hash(conn, html: str, base_url: str) -> tuple[str | None, str | None]:
