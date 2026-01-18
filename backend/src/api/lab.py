@@ -16,6 +16,7 @@ from backend.src.core.whois import rdap_domain, rdap_ip
 from backend.src.security.favicon import fetch_favicon_bytes
 import requests
 from backend.src.utils.api import ok
+import difflib
 
 router = APIRouter(prefix="/api/lab", tags=["lab"])
 
@@ -31,6 +32,63 @@ def get_lab(target_id: int):
         matches = list_matches(conn, target_id) if target else []
         yara = list_yara_matches(conn, target_id) if target else []
         return ok({"target": target, "assets": assets, "indicators": indicators, "matches": matches, "yara": yara})
+    finally:
+        conn.close()
+
+
+@router.get("/{target_id}/timeline")
+def get_timeline(target_id: int):
+    cfg = load_db_config()
+    conn = connect(cfg)
+    try:
+        events: list[dict] = []
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, created_at FROM targets WHERE id=%s", (target_id,))
+            row = cur.fetchone()
+            if row:
+                events.append({"kind": "target", "message": f"target #{target_id}", "created_at": row["created_at"]})
+            cur.execute(
+                "SELECT created_at, kind, value FROM indicators WHERE target_id=%s ORDER BY created_at ASC",
+                (target_id,),
+            )
+            for row in cur.fetchall() or []:
+                events.append(
+                    {"kind": "indicator", "message": f"{row.get('kind')}: {row.get('value')}", "created_at": row["created_at"]}
+                )
+            cur.execute(
+                "SELECT created_at, kind, message FROM alerts WHERE target_id=%s ORDER BY created_at ASC",
+                (target_id,),
+            )
+            for row in cur.fetchall() or []:
+                events.append(
+                    {"kind": "alert", "message": f"{row.get('kind')}: {row.get('message')}", "created_at": row["created_at"]}
+                )
+            cur.execute(
+                "SELECT m.created_at, s.name FROM signature_matches m LEFT JOIN signatures s ON m.signature_id=s.id WHERE m.target_id=%s ORDER BY m.created_at ASC",
+                (target_id,),
+            )
+            for row in cur.fetchall() or []:
+                events.append(
+                    {"kind": "signature", "message": f"match: {row.get('name')}", "created_at": row["created_at"]}
+                )
+            cur.execute(
+                "SELECT m.created_at, r.name FROM yara_matches m LEFT JOIN yara_rules r ON m.rule_id=r.id WHERE m.target_id=%s ORDER BY m.created_at ASC",
+                (target_id,),
+            )
+            for row in cur.fetchall() or []:
+                events.append(
+                    {"kind": "yara", "message": f"match: {row.get('name')}", "created_at": row["created_at"]}
+                )
+            cur.execute(
+                "SELECT created_at, kind, value FROM iocs WHERE target_id=%s ORDER BY created_at ASC",
+                (target_id,),
+            )
+            for row in cur.fetchall() or []:
+                events.append(
+                    {"kind": "ioc", "message": f"{row.get('kind')}: {row.get('value')}", "created_at": row["created_at"]}
+                )
+        events.sort(key=lambda item: item.get("created_at") or "")
+        return ok(events)
     finally:
         conn.close()
 
@@ -146,5 +204,25 @@ def get_whois(target_id: int):
                 warnings.append(err_i)
         warning = "; ".join(warnings) if warnings else None
         return ok({"domain": domain, "ip": ip, "rdap_domain": rdap_d, "rdap_ip": rdap_i, "warning": warning})
+    finally:
+        conn.close()
+
+
+@router.get("/diff")
+def diff_targets(left_id: int, right_id: int):
+    cfg = load_db_config()
+    conn = connect(cfg)
+    try:
+        left = get_target(conn, left_id)
+        right = get_target(conn, right_id)
+        if not left or not right:
+            return ok({"html": "", "headers": ""})
+        left_html = (left.get("html_excerpt") or "").splitlines()
+        right_html = (right.get("html_excerpt") or "").splitlines()
+        left_headers = (left.get("headers_text") or "").splitlines()
+        right_headers = (right.get("headers_text") or "").splitlines()
+        html_diff = "\n".join(difflib.unified_diff(left_html, right_html, fromfile=f"target_{left_id}", tofile=f"target_{right_id}"))
+        headers_diff = "\n".join(difflib.unified_diff(left_headers, right_headers, fromfile=f"target_{left_id}", tofile=f"target_{right_id}"))
+        return ok({"html": html_diff, "headers": headers_diff})
     finally:
         conn.close()

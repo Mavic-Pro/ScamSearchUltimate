@@ -33,6 +33,7 @@ export default function IocsTab() {
   const [aiPrompt, setAiPrompt] = React.useState("");
   const [aiReply, setAiReply] = React.useState<string | null>(null);
   const [aiStatus, setAiStatus] = React.useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
 
   const load = async () => {
     setStatus(tr("Loading IOCs...", "Caricamento IOC...", lang));
@@ -79,6 +80,22 @@ export default function IocsTab() {
 
   React.useEffect(() => {
     load();
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.kind) setKind(String(detail.kind));
+      if (detail.value) setValue(String(detail.value));
+      if (detail.domain) setDomain(String(detail.domain));
+      if (detail.url) setUrl(String(detail.url));
+      window.setTimeout(() => {
+        load();
+      }, 0);
+    };
+    window.addEventListener("open-iocs", handler);
+    return () => window.removeEventListener("open-iocs", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = iocs.filter((ioc) => {
@@ -194,9 +211,28 @@ export default function IocsTab() {
               <span>{ioc.kind}</span>
               <span className="truncate">{ioc.domain || ioc.url || "-"}</span>
               <span className="hash-value truncate">{ioc.value}</span>
+              <span className="truncate">{ioc.source || "-"}</span>
+              <div className="row-actions">
+                <button
+                  className="secondary"
+                  onClick={async () => {
+                    const text = ioc.value || ioc.domain || ioc.url || "";
+                    if (!text) return;
+                    try {
+                      await navigator.clipboard.writeText(String(text));
+                      setCopyNotice(tr("IOC copied.", "IOC copiato.", lang));
+                    } catch (err) {
+                      setCopyNotice(tr("Copy failed.", "Copia fallita.", lang));
+                    }
+                  }}
+                >
+                  {tr("Copy", "Copia", lang)}
+                </button>
+              </div>
             </div>
           ))}
         </div>
+        {copyNotice && <div className="muted">{copyNotice}</div>}
       </div>
       <div className="panel">
         <h3>{tr("AI Prioritization", "Prioritizzazione AI", lang)}</h3>

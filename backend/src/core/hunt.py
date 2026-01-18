@@ -9,13 +9,16 @@ from backend.src.db.dao.hunts import list_enabled_hunts, update_hunt_last_run
 from backend.src.db.dao.jobs import create_job
 from backend.src.db.dao.targets import filter_new_urls
 from backend.src.db.dao.jobs import filter_new_job_urls
+from backend.src.db.dao.hunt_runs import create_hunt_run
 from backend.src.utils.time import utcnow
 
 
-def run_hunt_targets(conn, rule_type: str, rule: str) -> Tuple[List[str], Dict[str, int], List[str]]:
+def run_hunt_targets(conn, rule_type: str, rule: str, only_new: bool = True) -> Tuple[List[str], Dict[str, int], List[str]]:
     debug: Dict[str, int] = {}
     warnings: List[str] = []
     urls: List[str] = []
+    if not rule or not str(rule).strip():
+        return [], debug, ["query_empty"]
     if rule_type == "fofa":
         fofa_urls, fofa_err = fofa_search_verbose(conn, rule)
         if fofa_err:
@@ -62,9 +65,11 @@ def run_hunt_targets(conn, rule_type: str, rule: str) -> Tuple[List[str], Dict[s
         seen.add(url)
         deduped.append(url)
 
-    fresh = filter_new_urls(conn, deduped)
-    fresh = filter_new_job_urls(conn, fresh)
-    return fresh[:200], debug, warnings
+    if only_new:
+        fresh = filter_new_urls(conn, deduped)
+        fresh = filter_new_job_urls(conn, fresh)
+        return fresh[:200], debug, warnings
+    return deduped[:200], debug, warnings
 
 
 def run_scheduled_hunts(conn) -> Dict[str, int]:
@@ -81,5 +86,6 @@ def run_scheduled_hunts(conn) -> Dict[str, int]:
         for url in targets[: hunt["budget"]]:
             create_job(conn, "scan", {"url": url})
             queued_total += 1
+        create_hunt_run(conn, hunt["id"], "auto", min(len(targets), hunt["budget"]), None)
         update_hunt_last_run(conn, hunt["id"])
     return {"queued": queued_total}

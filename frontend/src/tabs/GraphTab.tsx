@@ -215,6 +215,14 @@ export default function GraphTab() {
           </label>
           <button onClick={runAi} className="secondary">{tr("Analyze Graph", "Analizza grafo", lang)}</button>
         </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("identify bridge nodes", "identifica nodi ponte", lang))}>
+            {tr("Bridge Nodes", "Nodi Ponte", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("suggest best expansion path", "suggerisci miglior espansione", lang))}>
+            {tr("Best Expansion", "Miglior Espansione", lang)}
+          </button>
+        </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}
       </div>

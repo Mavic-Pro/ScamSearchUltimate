@@ -37,7 +37,7 @@ def _github_latest_release(repo: str) -> Optional[Dict[str, str]]:
         data = resp.json()
         tag = data.get("tag_name")
         if tag:
-            return {"version": tag, "url": data.get("html_url", "")}
+            return {"version": tag, "url": data.get("html_url", ""), "notes": data.get("body", "")}
     except Exception:
         return None
     return None
@@ -72,6 +72,7 @@ def check_update() -> Dict[str, object]:
         "local_version": local,
         "latest_version": latest.get("version"),
         "latest_url": latest.get("url"),
+        "latest_notes": latest.get("notes"),
         "dirty": _repo_dirty(),
         "update_available": local != latest.get("version"),
     }

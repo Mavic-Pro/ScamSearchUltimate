@@ -1,11 +1,18 @@
 from backend.src.utils.time import utcnow
 
 
-def insert_yara_match(conn, target_id: int, rule_id: int, asset_id: int | None = None) -> None:
+def insert_yara_match(
+    conn,
+    target_id: int,
+    rule_id: int,
+    asset_id: int | None = None,
+    verified: bool | None = None,
+    confidence: int | None = None,
+) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO yara_matches (target_id, asset_id, rule_id, created_at) VALUES (%s, %s, %s, %s)",
-            (target_id, asset_id, rule_id, utcnow()),
+            "INSERT INTO yara_matches (target_id, asset_id, rule_id, verified, confidence, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+            (target_id, asset_id, rule_id, verified, confidence, utcnow()),
         )
         conn.commit()
 

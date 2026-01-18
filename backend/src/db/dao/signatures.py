@@ -18,11 +18,11 @@ def list_signatures(conn):
         return cur.fetchall() or []
 
 
-def insert_match(conn, target_id: int, signature_id: int):
+def insert_match(conn, target_id: int, signature_id: int, verified: bool | None = None, confidence: int | None = None):
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO signature_matches (target_id, signature_id, created_at) VALUES (%s, %s, %s)",
-            (target_id, signature_id, utcnow()),
+            "INSERT INTO signature_matches (target_id, signature_id, verified, confidence, created_at) VALUES (%s, %s, %s, %s, %s)",
+            (target_id, signature_id, verified, confidence, utcnow()),
         )
         conn.commit()
 

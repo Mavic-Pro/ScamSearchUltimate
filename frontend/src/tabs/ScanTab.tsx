@@ -19,6 +19,13 @@ export default function ScanTab() {
   const [error, setError] = React.useState<string | null>(null);
   const [warning, setWarning] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [queueNotice, setQueueNotice] = React.useState<string | null>(null);
+  const queueTimer = React.useRef<number | null>(null);
+  const [playbookName, setPlaybookName] = React.useState("");
+  const [playbooks, setPlaybooks] = React.useState<Array<Record<string, string>>>(() => {
+    const raw = localStorage.getItem("scan_playbooks");
+    return raw ? JSON.parse(raw) : [];
+  });
   const [aiPrompt, setAiPrompt] = React.useState("");
   const [aiReply, setAiReply] = React.useState<string | null>(null);
   const [aiStatus, setAiStatus] = React.useState<string | null>(null);
@@ -46,6 +53,11 @@ export default function ScanTab() {
     if (res.ok) {
       setError(null);
       setStatus(tr("Scan queued.", "Scan in coda.", lang));
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      setQueueNotice(tr("Scan queued.", "Scan in coda.", lang));
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
       setWarning(res.data.warning || null);
       setUrl("");
       setKeyword("");
@@ -56,6 +68,83 @@ export default function ScanTab() {
       setStatus(null);
       setWarning(null);
     }
+  };
+
+  const runPlaybook = async (payload: { url?: string; keyword?: string; fofa_query?: string }, label: string) => {
+    if (!payload.url && !payload.keyword && !payload.fofa_query) {
+      setStatus(tr("Playbook is empty.", "Playbook vuoto.", lang));
+      return;
+    }
+    setStatus(tr("Scan queued.", "Scan in coda.", lang));
+    const res = await safePost<{ queued: number[]; warning?: string | null }>("/api/scan", {
+      url: payload.url || null,
+      keyword: payload.keyword || null,
+      fofa_query: payload.fofa_query || null
+    });
+    if (res.ok) {
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      setQueueNotice(tr(`Playbook queued: ${label}`, `Playbook in coda: ${label}`, lang));
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
+      setWarning(res.data.warning || null);
+      loadJobs();
+    } else {
+      setError(res.error);
+      setStatus(res.error);
+    }
+  };
+
+  const savePlaybook = () => {
+    if (!playbookName.trim()) {
+      setStatus(tr("Playbook name is required.", "Nome playbook richiesto.", lang));
+      return;
+    }
+    if (!url.trim() && !keyword.trim() && !fofaQuery.trim()) {
+      setStatus(tr("Fill at least one input to save.", "Compila almeno un campo per salvare.", lang));
+      return;
+    }
+    const next = [
+      { name: playbookName.trim(), url: url.trim(), keyword: keyword.trim(), fofa_query: fofaQuery.trim() },
+      ...playbooks.filter((pb) => pb.name !== playbookName.trim())
+    ];
+    setPlaybooks(next);
+    localStorage.setItem("scan_playbooks", JSON.stringify(next));
+    setStatus(tr("Playbook saved.", "Playbook salvato.", lang));
+    setPlaybookName("");
+  };
+
+  const removePlaybook = (name: string) => {
+    const next = playbooks.filter((pb) => pb.name !== name);
+    setPlaybooks(next);
+    localStorage.setItem("scan_playbooks", JSON.stringify(next));
+  };
+
+  const exportPlaybooks = () => {
+    const blob = new Blob([JSON.stringify(playbooks, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "scan-playbooks.json";
+    link.click();
+  };
+
+  const importPlaybooks = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || "[]"));
+        if (!Array.isArray(parsed)) {
+          setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
+          return;
+        }
+        setPlaybooks(parsed);
+        localStorage.setItem("scan_playbooks", JSON.stringify(parsed));
+        setStatus(tr("Playbooks imported.", "Playbook importati.", lang));
+      } catch (err) {
+        setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
+      }
+    };
+    reader.readAsText(file);
   };
 
   const rescanJob = async (job: Job) => {
@@ -72,7 +161,11 @@ export default function ScanTab() {
     const res = await safePost<{ queued: number[] }>("/api/scan", { url });
     if (res.ok) {
       setError(null);
-      window.alert(tr("Rescan queued.", "Riscansione in coda.", lang));
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      setQueueNotice(tr("Rescan queued.", "Riscansione in coda.", lang));
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
       loadJobs();
     } else {
       setError(res.error);
@@ -135,6 +228,45 @@ export default function ScanTab() {
           <button onClick={handleSubmit}>{tr("Start Scan", "Avvia Scan", lang)}</button>
           {warning && <span className="status">{warning}</span>}
         </div>
+        {queueNotice && <div className="warning-banner">{queueNotice}</div>}
+      </div>
+      <div className="panel">
+        <h3>{tr("Playbooks", "Playbook", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Playbook name", "Nome playbook", lang)}
+            <input value={playbookName} onChange={(e) => setPlaybookName(e.target.value)} />
+          </label>
+          <button onClick={savePlaybook} className="secondary">{tr("Save Playbook", "Salva playbook", lang)}</button>
+        </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={exportPlaybooks}>{tr("Export", "Export", lang)}</button>
+          <input
+            id="scan-playbook-import"
+            type="file"
+            accept="application/json"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importPlaybooks(file);
+            }}
+            style={{ display: "none" }}
+          />
+          <label className="secondary" htmlFor="scan-playbook-import">
+            {tr("Import", "Import", lang)}
+          </label>
+        </div>
+        <div className="table">
+          {playbooks.map((pb) => (
+            <div key={pb.name} className="row">
+              <span>{pb.name}</span>
+              <span className="truncate">{pb.url || pb.keyword || pb.fofa_query || "-"}</span>
+              <div className="row-actions">
+                <button className="secondary" onClick={() => runPlaybook(pb, pb.name)}>{tr("Run", "Avvia", lang)}</button>
+                <button className="secondary danger" onClick={() => removePlaybook(pb.name)}>{tr("Delete", "Elimina", lang)}</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="panel">
         <h3>{tr("Queue", "Queue", lang)}</h3>
@@ -176,7 +308,7 @@ export default function ScanTab() {
                 )}
                 <button
                   onClick={() => updateJob(job.id, "remove")}
-                  className="secondary"
+                  className="secondary danger"
                   title={tr("Remove this job from the queue", "Rimuovi questo job dalla coda", lang)}
                 >
                   {tr("Remove job", "Rimuovi job", lang)}

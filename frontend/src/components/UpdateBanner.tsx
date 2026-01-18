@@ -7,6 +7,7 @@ interface UpdateStatus {
   local_version?: string;
   latest_version?: string;
   latest_url?: string;
+  latest_notes?: string;
   update_available?: boolean;
   dirty?: boolean;
   error?: string;
@@ -16,6 +17,7 @@ export default function UpdateBanner() {
   const lang = getLang();
   const [status, setStatus] = React.useState<UpdateStatus | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
+  const [showNotes, setShowNotes] = React.useState(false);
 
   const load = async () => {
     const res = await safeGet<UpdateStatus>("/api/update/status");
@@ -72,6 +74,16 @@ export default function UpdateBanner() {
             <a href={status.latest_url} target="_blank" rel="noreferrer">
               {tr("Release details", "Dettagli release", lang)}
             </a>
+          </div>
+        )}
+        {status.latest_notes && (
+          <div className="muted">
+            <button className="secondary" onClick={() => setShowNotes(!showNotes)}>
+              {showNotes ? tr("Hide notes", "Nascondi note", lang) : tr("Show notes", "Mostra note", lang)}
+            </button>
+            {showNotes && (
+              <pre>{status.latest_notes}</pre>
+            )}
           </div>
         )}
       </div>

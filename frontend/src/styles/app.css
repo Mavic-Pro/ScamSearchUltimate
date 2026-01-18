@@ -112,6 +112,7 @@ label {
   gap: 6px;
   font-size: 13px;
   color: var(--muted);
+  line-height: 1.2;
 }
 
 input,
@@ -128,30 +129,63 @@ button,
   background: var(--accent);
   color: #04151f;
   border: none;
-  padding: 10px 16px;
+  padding: 12px 18px;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
   text-decoration: none;
   text-align: center;
+  line-height: 1.1;
 }
 
 button.secondary {
-  background: var(--accent-2);
-  color: #1b0a00;
+  background: rgba(255, 122, 24, 0.18);
+  color: var(--accent-2);
+  border: 1px solid rgba(255, 122, 24, 0.4);
+  border-radius: 999px;
+  padding: 8px 14px;
+}
+
+button.danger {
+  background: rgba(248, 113, 113, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 999px;
+  padding: 8px 14px;
 }
 
 .button-link {
   background: var(--accent-2);
   color: #1b0a00;
   border: none;
-  padding: 10px 16px;
+  padding: 12px 18px;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
   text-decoration: none;
   text-align: center;
   display: inline-block;
+  line-height: 1.1;
+}
+
+.row-actions button.secondary,
+.row-actions .button.secondary,
+.row-actions label.secondary {
+  background: rgba(255, 122, 24, 0.14);
+  color: var(--accent-2);
+  border: 1px solid rgba(255, 122, 24, 0.35);
+  border-radius: 999px;
+  padding: 8px 14px;
+}
+
+.row-actions button.danger,
+.row-actions .button.danger,
+.row-actions label.danger {
+  background: rgba(248, 113, 113, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 999px;
+  padding: 8px 14px;
 }
 
 .table {
@@ -163,8 +197,8 @@ button.secondary {
 .row {
   display: grid;
   grid-template-columns: 80px 120px 120px 1fr 160px;
-  gap: 12px;
-  padding: 10px;
+  gap: 16px;
+  padding: 12px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -182,7 +216,7 @@ button.secondary {
 }
 
 .row.simple-row {
-  grid-template-columns: 80px 120px 1fr;
+  grid-template-columns: 80px 140px 1fr;
   align-items: center;
 }
 
@@ -355,9 +389,17 @@ button.secondary {
 
 .row-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   justify-content: flex-end;
   align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.form-grid button,
+.form-grid .button,
+.form-grid .button-link {
+  margin-top: 4px;
 }
 
 .hint-card {

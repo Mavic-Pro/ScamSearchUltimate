@@ -122,6 +122,14 @@ export default function YaraTab() {
           </label>
           <button onClick={runAiSuggest} className="secondary">{tr("Suggest YARA", "Suggerisci YARA", lang)}</button>
         </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("detect obfuscated phishing javascript", "rileva javascript phishing offuscato", lang))}>
+            {tr("Obfuscated JS", "JS Offuscato", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("detect wallet drainers", "rileva wallet drainer", lang))}>
+            {tr("Wallet Drainer", "Wallet Drainer", lang)}
+          </button>
+        </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}
       </div>

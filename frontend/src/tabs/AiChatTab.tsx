@@ -14,15 +14,29 @@ export default function AiChatTab() {
   const [input, setInput] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
-  const [targetId, setTargetId] = React.useState(() => localStorage.getItem("lab_target_id") || "");
+  const [targetIdsRaw, setTargetIdsRaw] = React.useState(() => localStorage.getItem("lab_target_id") || "");
   const [includeDom, setIncludeDom] = React.useState(false);
   const [includeIocs, setIncludeIocs] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
+  const [pivotPrompt, setPivotPrompt] = React.useState("extract new IOCs and pivots");
+  const [pivots, setPivots] = React.useState<Array<{ kind: string; value: string; reason?: string }>>([]);
+  const [pivotStatus, setPivotStatus] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<{
     hunts: Array<Record<string, any>>;
     signatures: Array<Record<string, any>>;
     source: string;
   } | null>(null);
+
+  const parseTargetIds = () => {
+    return Array.from(
+      new Set(
+        targetIdsRaw
+          .split(/[,\s]+/)
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      )
+    );
+  };
 
   const send = async () => {
     if (!input.trim()) return;
@@ -30,9 +44,10 @@ export default function AiChatTab() {
     const next = [...messages, { role: "user", content: input.trim() }];
     setMessages(next);
     setInput("");
+    const targetIds = parseTargetIds();
     const res = await safePost<{ reply: string }>("/api/ai/chat", {
       messages: next,
-      target_id: targetId ? Number(targetId) : null,
+      target_ids: targetIds.length ? targetIds : null,
       include_dom: includeDom,
       include_iocs: includeIocs
     });
@@ -49,11 +64,12 @@ export default function AiChatTab() {
   const suggest = async () => {
     if (!prompt.trim()) return;
     setStatus(tr("Requesting suggestions...", "Richiesta suggerimenti...", lang));
+    const targetIds = parseTargetIds();
     const res = await safePost<{ hunts: Array<Record<string, any>>; signatures: Array<Record<string, any>>; source: string }>(
       "/api/ai/suggest",
       {
         prompt,
-        target_id: targetId ? Number(targetId) : null,
+        target_ids: targetIds.length ? targetIds : null,
         include_dom: includeDom,
         include_iocs: includeIocs
       }
@@ -65,6 +81,27 @@ export default function AiChatTab() {
     } else {
       setError(res.error);
       setStatus(res.error);
+    }
+  };
+
+  const extractPivots = async () => {
+    setPivotStatus(tr("Extracting pivots...", "Estrazione pivot...", lang));
+    const targetIds = parseTargetIds();
+    const res = await safePost<{ data?: { pivots?: Array<{ kind: string; value: string; reason?: string }> } }>(
+      "/api/ai/task",
+      {
+        task: "pivot_suggestions",
+        prompt: pivotPrompt || null,
+        target_ids: targetIds.length ? targetIds : null,
+        include_dom: includeDom,
+        include_iocs: includeIocs
+      }
+    );
+    if (res.ok) {
+      setPivots(res.data.data?.pivots || []);
+      setPivotStatus(tr("Pivots ready.", "Pivot pronti.", lang));
+    } else {
+      setPivotStatus(res.error);
     }
   };
 
@@ -103,8 +140,12 @@ export default function AiChatTab() {
         {status && <div className="muted">{status}</div>}
         <div className="form-grid">
           <label>
-            {tr("Target ID (optional)", "Target ID (opzionale)", lang)}
-            <input value={targetId} onChange={(e) => setTargetId(e.target.value)} />
+            {tr("Target IDs (optional)", "Target ID (opzionali)", lang)}
+            <input
+              value={targetIdsRaw}
+              onChange={(e) => setTargetIdsRaw(e.target.value)}
+              placeholder={tr("e.g. 12, 15, 21", "Es: 12, 15, 21", lang)}
+            />
           </label>
           <label>
             {tr("Include full DOM", "Include DOM completo", lang)}
@@ -123,10 +164,21 @@ export default function AiChatTab() {
             />
           </label>
         </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setInput(tr("Summarize risks for these targets.", "Riassumi i rischi per questi target.", lang))}>
+            {tr("Risk Summary", "Riassunto rischi", lang)}
+          </button>
+          <button className="secondary" onClick={() => setInput(tr("Extract phishing kit indicators and brands.", "Estrai indicatori di phishing kit e brand.", lang))}>
+            {tr("Phishing Kit", "Phishing Kit", lang)}
+          </button>
+          <button className="secondary" onClick={() => setInput(tr("Suggest IOC pivots and next steps.", "Suggerisci pivot IOC e prossimi passi.", lang))}>
+            {tr("Pivot Ideas", "Idee Pivot", lang)}
+          </button>
+        </div>
         <div className="muted">
           {tr(
-            "Tip: use Target ID from Lab for context (DOM + IOC) and more precise rules.",
-            "Suggerimento: usa Target ID da Lab per dare contesto (DOM + IOC) e ottenere regole piu' precise.",
+            "Tip: you can pass multiple Target IDs to compare DOM/IOCs and extract new pivots.",
+            "Suggerimento: puoi usare piu' Target ID per confrontare DOM/IOC e trovare nuovi pivot.",
             lang
           )}
         </div>
@@ -181,6 +233,40 @@ export default function AiChatTab() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+      </div>
+      <div className="panel">
+        <h3>{tr("IOC Pivot Suggestions", "Suggerimenti Pivot IOC", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Prompt", "Prompt", lang)}
+            <input value={pivotPrompt} onChange={(e) => setPivotPrompt(e.target.value)} />
+          </label>
+          <button onClick={extractPivots} className="secondary">{tr("Extract Pivots", "Estrai pivot", lang)}</button>
+        </div>
+        {pivotStatus && <div className="muted">{pivotStatus}</div>}
+        {pivots.length > 0 && (
+          <div className="table">
+            {pivots.map((item, idx) => (
+              <div key={`${item.kind}-${item.value}-${idx}`} className="row">
+                <span>{item.kind}</span>
+                <span className="truncate">{item.value}</span>
+                <span className="truncate">{item.reason || "-"}</span>
+                <div className="row-actions">
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new CustomEvent("open-iocs", { detail: { kind: item.kind, value: item.value } })
+                      )
+                    }
+                  >
+                    {tr("Pivot", "Pivot", lang)}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -207,6 +207,14 @@ export default function SignaturesTab() {
           </label>
           <button onClick={runAiSuggest} className="secondary">{tr("Suggest Signature", "Suggerisci firma", lang)}</button>
         </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("detect wallet connect phishing", "rileva phishing wallet connect", lang))}>
+            {tr("Wallet Phishing", "Wallet Phishing", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("detect fake bank login forms", "rileva form login bancari falsi", lang))}>
+            {tr("Bank Login", "Login Banca", lang)}
+          </button>
+        </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}
       </div>

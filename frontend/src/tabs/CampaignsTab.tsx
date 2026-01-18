@@ -111,7 +111,7 @@ export default function CampaignsTab() {
                             Apri Lab
                           </button>
                           <button
-                            className="secondary"
+                            className="secondary danger"
                             onClick={() => removeTarget(c.sample_target_id!)}
                             title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}
                           >

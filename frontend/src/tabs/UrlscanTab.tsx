@@ -33,6 +33,8 @@ export default function UrlscanTab() {
     const raw = localStorage.getItem("urlscan_history");
     return raw ? JSON.parse(raw) : [];
   });
+  const [queueNotice, setQueueNotice] = React.useState<string | null>(null);
+  const queueTimer = React.useRef<number | null>(null);
   const [openLocalRedirects, setOpenLocalRedirects] = React.useState<number | null>(null);
   const [remoteRedirects, setRemoteRedirects] = React.useState<Record<string, { chain?: any[]; error?: string; loading?: boolean }>>({});
 
@@ -48,6 +50,15 @@ export default function UrlscanTab() {
       }
     }
     return [];
+  };
+
+  const notify = (message: string) => {
+    setStatus(message);
+    setQueueNotice(message);
+    if (queueTimer.current) {
+      window.clearTimeout(queueTimer.current);
+    }
+    queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
   };
 
   const run = async () => {
@@ -112,7 +123,13 @@ export default function UrlscanTab() {
     setStatus(tr("Queueing scan...", "Messa in coda scan...", lang));
     const res = await safePost<{ queued: number[] }>("/api/scan", { url });
     if (res.ok) {
-      setStatus(tr(`Scan queued for ${url}`, `Scan in coda per ${url}`, lang));
+      const message = tr(`Scan queued for ${url}`, `Scan in coda per ${url}`, lang);
+      setStatus(message);
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      setQueueNotice(message);
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
     } else {
       setError(res.error);
       setStatus(res.error);
@@ -168,7 +185,11 @@ export default function UrlscanTab() {
     const res = await safePost(`/api/targets/${targetId}/delete`, {});
     if (res.ok) {
       setStatus(tr("Target removed.", "Target rimosso.", lang));
-      window.alert(tr("Target removed.", "Target rimosso.", lang));
+      setQueueNotice(tr("Target removed.", "Target rimosso.", lang));
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
       run();
     } else {
       setError(res.error);
@@ -182,6 +203,86 @@ export default function UrlscanTab() {
       setRemoteRedirects((prev) => ({ ...prev, [url]: { chain: res.data.chain || [], loading: false } }));
     } else {
       setRemoteRedirects((prev) => ({ ...prev, [url]: { error: res.error, loading: false } }));
+    }
+  };
+
+  const copyChain = async (chain: any[]) => {
+    if (!chain.length) return;
+    const text = chain.map((step) => `${step.status || ""} ${step.url} ${step.location ? `-> ${step.location}` : ""}`.trim()).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      notify(tr("Redirect chain copied.", "Redirect chain copiato.", lang));
+    } catch (err) {
+      notify(tr("Copy failed.", "Copia fallita.", lang));
+    }
+  };
+
+  const saveChainAsIocs = async (
+    chain: any[],
+    targetId?: number,
+    domain?: string,
+    finalOnly = false,
+    domainsOnly = false
+  ) => {
+    if (!chain.length) return;
+    const steps = finalOnly ? [chain[chain.length - 1]] : chain.slice(0, 20);
+    const seen = new Set<string>();
+    let count = 0;
+    for (const step of steps) {
+      if (!step?.url) continue;
+      let iocKind = "url";
+      let value = String(step.url);
+      let dom = domain ?? null;
+      if (domainsOnly) {
+        try {
+          const parsed = new URL(String(step.url));
+          iocKind = "domain";
+          value = parsed.hostname;
+          dom = parsed.hostname;
+        } catch (err) {
+          continue;
+        }
+      }
+      const key = `${iocKind}:${value}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      await safePost("/api/iocs", {
+        kind: iocKind,
+        value,
+        source: "redirect_chain",
+        target_id: targetId ?? null,
+        url: iocKind === "url" ? String(step.url) : null,
+        domain: dom
+      });
+      count += 1;
+    }
+    const message = domainsOnly
+      ? tr(`Saved ${count} domains as IOCs.`, `Salvati ${count} domini come IOC.`, lang)
+      : tr(`Saved ${count} URLs as IOCs.`, `Salvati ${count} URL come IOC.`, lang);
+    notify(message);
+  };
+
+  const queueRemoteAll = async (limit = 50) => {
+    if (!data?.remote?.length) return;
+    const urls = data.remote.slice(0, limit);
+    setStatus(tr("Queueing remote scans...", "Messa in coda scan remote...", lang));
+    const res = await safePost<{ queued: number[] }>("/api/scan/bulk", { urls });
+    if (res.ok) {
+      const message = tr(
+        `Queued ${res.data.queued?.length ?? 0} remote scans.`,
+        `Messi in coda ${res.data.queued?.length ?? 0} scan remote.`,
+        lang
+      );
+      setStatus(message);
+      if (queueTimer.current) {
+        window.clearTimeout(queueTimer.current);
+      }
+      setQueueNotice(message);
+      queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
+    } else {
+      setStatus(res.error);
     }
   };
 
@@ -262,6 +363,7 @@ export default function UrlscanTab() {
             ))}
           </div>
         )}
+        {queueNotice && <div className="warning-banner">{queueNotice}</div>}
       </div>
       {data && (
         <div className="panel">
@@ -285,6 +387,31 @@ export default function UrlscanTab() {
                         >
                           {tr("Redirects", "Redirects", lang)} ({chainCount})
                         </button>
+                        {chainCount > 0 && (
+                          <>
+                            <button className="secondary" onClick={() => copyChain(chain)}>
+                              {tr("Copy Chain", "Copia chain", lang)}
+                            </button>
+                            <button
+                              className="secondary"
+                              onClick={() => saveChainAsIocs(chain, row.target_id ? Number(row.target_id) : undefined, String(row.domain || ""))}
+                            >
+                              {tr("Save IOCs", "Salva IOC", lang)}
+                            </button>
+                            <button
+                              className="secondary"
+                              onClick={() => saveChainAsIocs(chain, row.target_id ? Number(row.target_id) : undefined, String(row.domain || ""), true)}
+                            >
+                              {tr("Save Final URL", "Salva URL finale", lang)}
+                            </button>
+                            <button
+                              className="secondary"
+                              onClick={() => saveChainAsIocs(chain, row.target_id ? Number(row.target_id) : undefined, String(row.domain || ""), false, true)}
+                            >
+                              {tr("Save Domains", "Salva domini", lang)}
+                            </button>
+                          </>
+                        )}
                       </div>
                       {isOpen && chainCount > 0 && (
                         <div className="muted">
@@ -316,7 +443,7 @@ export default function UrlscanTab() {
                   )}
                   {row.target_id && (
                     <button
-                      className="secondary"
+                      className="secondary danger"
                       onClick={() => removeTarget(Number(row.target_id))}
                       title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}
                     >
@@ -393,9 +520,15 @@ export default function UrlscanTab() {
             </div>
           )}
           <h3>{tr("Urlscan Results", "Risultati Urlscan", lang)}</h3>
+          <div className="row-actions" style={{ marginBottom: "8px" }}>
+            <button className="secondary" onClick={() => queueRemoteAll(50)}>
+              {tr("Queue all remote (50)", "Coda tutti remote (50)", lang)}
+            </button>
+          </div>
           <div className="table">
             {data.remote.map((url) => {
               const entry = remoteRedirects[url] || {};
+              const chain = entry.chain || [];
               return (
                 <div key={url} className="row">
                   <span>{tr("remote", "remote", lang)}</span>
@@ -410,6 +543,22 @@ export default function UrlscanTab() {
                     >
                       {entry.loading ? tr("Loading...", "Caricamento...", lang) : tr("Redirects", "Redirects", lang)}
                     </button>
+                    {chain.length > 0 && (
+                      <>
+                        <button className="secondary" onClick={() => copyChain(chain)}>
+                          {tr("Copy Chain", "Copia chain", lang)}
+                        </button>
+                        <button className="secondary" onClick={() => saveChainAsIocs(chain)}>
+                          {tr("Save IOCs", "Salva IOC", lang)}
+                        </button>
+                        <button className="secondary" onClick={() => saveChainAsIocs(chain, undefined, undefined, true)}>
+                          {tr("Save Final URL", "Salva URL finale", lang)}
+                        </button>
+                        <button className="secondary" onClick={() => saveChainAsIocs(chain, undefined, undefined, false, true)}>
+                          {tr("Save Domains", "Salva domini", lang)}
+                        </button>
+                      </>
+                    )}
                   </div>
                   {entry.error && <span className="status">{entry.error}</span>}
                 </div>
@@ -440,6 +589,14 @@ export default function UrlscanTab() {
             <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. highlight suspicious outliers", "Es: evidenzia outlier sospetti", lang)} />
           </label>
           <button onClick={runAi} className="secondary" disabled={!data}>{tr("Analyze Results", "Analizza risultati", lang)}</button>
+        </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("cluster by brand and kit similarity", "cluster per brand e similarita' kit", lang))}>
+            {tr("Cluster Kits", "Cluster Kit", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("find rare outliers", "trova outlier rari", lang))}>
+            {tr("Outliers", "Outlier", lang)}
+          </button>
         </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}

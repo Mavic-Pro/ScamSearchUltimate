@@ -12,6 +12,7 @@ interface Hunt {
   delay_seconds: number;
   budget: number;
   enabled: boolean;
+  last_run_at?: string | null;
 }
 
 interface HuntRunResponse {
@@ -35,6 +36,14 @@ export default function HuntTab() {
   const [aiPrompt, setAiPrompt] = React.useState("");
   const [aiReply, setAiReply] = React.useState<string | null>(null);
   const [aiStatus, setAiStatus] = React.useState<string | null>(null);
+  const [queueNotice, setQueueNotice] = React.useState<string | null>(null);
+  const queueTimer = React.useRef<number | null>(null);
+  const [runs, setRuns] = React.useState<Array<Record<string, any>>>([]);
+  const [playbookName, setPlaybookName] = React.useState("");
+  const [playbooks, setPlaybooks] = React.useState<Array<Record<string, string>>>(() => {
+    const raw = localStorage.getItem("hunt_playbooks");
+    return raw ? JSON.parse(raw) : [];
+  });
 
   const loadHunts = async () => {
     const res = await safeGet<Hunt[]>("/api/hunt");
@@ -46,9 +55,25 @@ export default function HuntTab() {
     }
   };
 
+  const loadRuns = async () => {
+    const res = await safeGet<Array<Record<string, any>>>("/api/hunt/runs");
+    if (res.ok) {
+      setRuns(res.data);
+    }
+  };
+
   React.useEffect(() => {
     loadHunts();
+    loadRuns();
   }, []);
+
+  const flashQueueNotice = (message: string) => {
+    setQueueNotice(message);
+    if (queueTimer.current) {
+      window.clearTimeout(queueTimer.current);
+    }
+    queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
+  };
 
   const handleCreate = async () => {
     const res = await safePost<{ id: number }>("/api/hunt", {
@@ -92,10 +117,79 @@ export default function HuntTab() {
           : `${tr("No targets found. Check API keys and query.", "Nessun target trovato. Verifica API key e query.", lang)}${warning}${debug}`
       );
       setError(null);
+      if (queued > 0) {
+        flashQueueNotice(
+          tr(
+            `Queued ${queued} scan jobs.`,
+            `Messi in coda ${queued} scan.`,
+            lang
+          )
+        );
+      }
+      loadRuns();
     } else {
       setError(res.error);
       setStatus(null);
     }
+  };
+
+  const runPlaybook = async (pb: { name: string; rule_type: string; rule: string }) => {
+    setName(pb.name);
+    setRuleType(pb.rule_type);
+    setRule(pb.rule);
+    await handleRun();
+  };
+
+  const savePlaybook = () => {
+    if (!playbookName.trim()) {
+      setStatus(tr("Playbook name is required.", "Nome playbook richiesto.", lang));
+      return;
+    }
+    if (!rule.trim()) {
+      setStatus(tr("Rule is required.", "Regola richiesta.", lang));
+      return;
+    }
+    const next = [
+      { name: playbookName.trim(), rule_type: ruleType, rule: rule.trim() },
+      ...playbooks.filter((pb) => pb.name !== playbookName.trim())
+    ];
+    setPlaybooks(next);
+    localStorage.setItem("hunt_playbooks", JSON.stringify(next));
+    setStatus(tr("Playbook saved.", "Playbook salvato.", lang));
+    setPlaybookName("");
+  };
+
+  const removePlaybook = (name: string) => {
+    const next = playbooks.filter((pb) => pb.name !== name);
+    setPlaybooks(next);
+    localStorage.setItem("hunt_playbooks", JSON.stringify(next));
+  };
+
+  const exportPlaybooks = () => {
+    const blob = new Blob([JSON.stringify(playbooks, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "hunt-playbooks.json";
+    link.click();
+  };
+
+  const importPlaybooks = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || "[]"));
+        if (!Array.isArray(parsed)) {
+          setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
+          return;
+        }
+        setPlaybooks(parsed);
+        localStorage.setItem("hunt_playbooks", JSON.stringify(parsed));
+        setStatus(tr("Playbooks imported.", "Playbook importati.", lang));
+      } catch (err) {
+        setStatus(tr("Invalid playbook file.", "File playbook non valido.", lang));
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleRunSaved = async (huntId: number) => {
@@ -115,6 +209,16 @@ export default function HuntTab() {
       setStatus(msg);
       setRowStatus((prev) => ({ ...prev, [huntId]: msg }));
       setError(null);
+      if (queued > 0) {
+        flashQueueNotice(
+          tr(
+            `Queued ${queued} scan jobs.`,
+            `Messi in coda ${queued} scan.`,
+            lang
+          )
+        );
+      }
+      loadRuns();
     } else {
       setError(res.error);
       setStatus(null);
@@ -205,6 +309,7 @@ export default function HuntTab() {
           <button onClick={handleRun} className="secondary">{tr("Run Hunt", "Avvia Hunt", lang)}</button>
           {status && <span className="status">{status}</span>}
         </div>
+        {queueNotice && <div className="warning-banner">{queueNotice}</div>}
       </div>
       <div className="panel">
         <h3>{tr("Rules", "Regole", lang)}</h3>
@@ -215,11 +320,27 @@ export default function HuntTab() {
               <span>{hunt.name}</span>
               <span>{hunt.rule_type}</span>
               <span>{hunt.rule}</span>
+              <span className="hash-value">{hunt.last_run_at || "-"}</span>
               <div className="row-actions">
                 <button onClick={() => handleLoadSaved(hunt)}>{tr("Load", "Carica", lang)}</button>
                 <button onClick={() => handleRunSaved(hunt.id)} className="secondary">{tr("Run", "Avvia", lang)}</button>
                 {rowStatus[hunt.id] && <span className="row-status">{rowStatus[hunt.id]}</span>}
               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("Scheduler Log", "Log Scheduler", lang)}</h3>
+        <div className="table">
+          {runs.map((run) => (
+            <div key={run.id} className="row">
+              <span>#{run.id}</span>
+              <span>{run.name || run.hunt_id}</span>
+              <span>{run.trigger}</span>
+              <span>{run.queued}</span>
+              <span className="truncate">{run.warning || "-"}</span>
+              <span className="hash-value">{run.created_at || "-"}</span>
             </div>
           ))}
         </div>
@@ -233,8 +354,55 @@ export default function HuntTab() {
           </label>
           <button onClick={runAiSuggest} className="secondary">{tr("Suggest Rule", "Suggerisci regola", lang)}</button>
         </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("brand login phishing in Italy", "phishing login brand in Italia", lang))}>
+            {tr("Brand Login", "Brand Login", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("crypto wallet connect drainer", "drainer wallet crypto connect", lang))}>
+            {tr("Wallet Drainer", "Wallet Drainer", lang)}
+          </button>
+        </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}
+      </div>
+      <div className="panel">
+        <h3>{tr("Playbooks", "Playbook", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Playbook name", "Nome playbook", lang)}
+            <input value={playbookName} onChange={(e) => setPlaybookName(e.target.value)} />
+          </label>
+          <button onClick={savePlaybook} className="secondary">{tr("Save Playbook", "Salva playbook", lang)}</button>
+        </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={exportPlaybooks}>{tr("Export", "Export", lang)}</button>
+          <input
+            id="hunt-playbook-import"
+            type="file"
+            accept="application/json"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importPlaybooks(file);
+            }}
+            style={{ display: "none" }}
+          />
+          <label className="secondary" htmlFor="hunt-playbook-import">
+            {tr("Import", "Import", lang)}
+          </label>
+        </div>
+        <div className="table">
+          {playbooks.map((pb) => (
+            <div key={pb.name} className="row">
+              <span>{pb.name}</span>
+              <span>{pb.rule_type}</span>
+              <span className="truncate">{pb.rule}</span>
+              <div className="row-actions">
+                <button className="secondary" onClick={() => runPlaybook(pb)}>{tr("Run", "Avvia", lang)}</button>
+                <button className="secondary danger" onClick={() => removePlaybook(pb.name)}>{tr("Delete", "Elimina", lang)}</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

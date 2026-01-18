@@ -1,4 +1,4 @@
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 TABLES = {
     "schema_version": {
@@ -37,6 +37,7 @@ TABLES = {
         "reason": "text",
         "risk_score": "int NOT NULL DEFAULT 0",
         "redirect_chain": "text",
+        "tags": "text",
         "dom_hash": "text",
         "headers_hash": "text",
         "headers_text": "text",
@@ -84,6 +85,8 @@ TABLES = {
         "id": "bigserial PRIMARY KEY",
         "target_id": "bigint NOT NULL",
         "signature_id": "bigint NOT NULL",
+        "verified": "boolean",
+        "confidence": "int",
         "created_at": "timestamptz NOT NULL",
     },
     "hunts": {
@@ -98,11 +101,27 @@ TABLES = {
         "last_run_at": "timestamptz",
         "created_at": "timestamptz NOT NULL",
     },
+    "hunt_runs": {
+        "id": "bigserial PRIMARY KEY",
+        "hunt_id": "bigint NOT NULL",
+        "trigger": "text NOT NULL",
+        "queued": "int NOT NULL",
+        "warning": "text",
+        "created_at": "timestamptz NOT NULL",
+    },
     "alerts": {
         "id": "bigserial PRIMARY KEY",
         "target_id": "bigint NOT NULL",
         "kind": "text NOT NULL",
         "message": "text NOT NULL",
+        "created_at": "timestamptz NOT NULL",
+    },
+    "alert_rules": {
+        "id": "bigserial PRIMARY KEY",
+        "name": "text NOT NULL",
+        "pattern": "text NOT NULL",
+        "target_field": "text NOT NULL",
+        "enabled": "boolean NOT NULL DEFAULT true",
         "created_at": "timestamptz NOT NULL",
     },
     "campaigns": {
@@ -152,6 +171,15 @@ TABLES = {
         "target_id": "bigint NOT NULL",
         "asset_id": "bigint",
         "rule_id": "bigint NOT NULL",
+        "verified": "boolean",
+        "confidence": "int",
+        "created_at": "timestamptz NOT NULL",
+    },
+    "urlscan_remote": {
+        "id": "bigserial PRIMARY KEY",
+        "url": "text NOT NULL",
+        "redirect_chain": "text",
+        "result_url": "text",
         "created_at": "timestamptz NOT NULL",
     },
     "urlscan_local": {
@@ -176,8 +204,11 @@ INDEXES = {
     "jobs": ["status", "lease_until"],
     "targets": ["domain", "status"],
     "signatures": ["enabled"],
+    "alert_rules": ["enabled"],
     "graph_nodes": ["kind", "value"],
     "urlscan_local": ["domain", "dom_hash", "headers_hash", "ip", "jarm", "favicon_hash"],
+    "hunt_runs": ["hunt_id"],
+    "urlscan_remote": ["url"],
 }
 
 VIEWS = {

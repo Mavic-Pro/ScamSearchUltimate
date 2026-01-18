@@ -18,3 +18,9 @@ def tail_logs(conn, limit: int = 100):
         )
         rows = cur.fetchall()
         return list(reversed(rows or []))
+
+
+def clear_logs(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM logs")
+        conn.commit()

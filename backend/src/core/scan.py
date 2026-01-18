@@ -7,7 +7,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-from backend.src.core.ai import ai_configured, verify_signature_match
+from backend.src.core.ai import ai_configured, suggest_tags, verify_signature_match
 from backend.src.core.extractors.indicators import extract_indicators
 from backend.src.core.settings import get_setting_value
 from backend.src.db.dao.assets import insert_asset
@@ -16,6 +16,7 @@ from backend.src.db.dao.graph import create_edge, upsert_node
 from backend.src.db.dao.indicators import insert_indicator
 from backend.src.db.dao.urlscan_local import insert_local
 from backend.src.db.dao.alerts import create_alert
+from backend.src.db.dao.alert_rules import list_alert_rules
 from backend.src.db.dao.signatures import count_matches, insert_match, list_signatures
 from backend.src.db.dao.yara_rules import list_yara_rules
 from backend.src.db.dao.yara_matches import insert_yara_match
@@ -96,6 +97,9 @@ def scan_url(conn, url: str) -> Dict[str, object]:
         jarm=jarm,
         reason=None,
     )
+    tags = suggest_tags(conn, {"url": url, "domain": domain, "title": title}, html_excerpt, header_text)
+    if tags:
+        update_target(conn, target_id, tags=", ".join(tags))
 
     insert_local(
         conn,
@@ -118,6 +122,7 @@ def scan_url(conn, url: str) -> Dict[str, object]:
     yara_rules = list_yara_rules(conn)
     asset_hashes = _process_assets(conn, target_id, html, url, signatures, yara_rules)
     _apply_signatures(conn, target_id, html, fetch.headers, url, signatures)
+    _apply_alert_rules(conn, target_id, html, fetch.headers, url)
     _apply_yara_html(conn, target_id, html, yara_rules)
     screenshot = _capture_screenshot(conn, target_id, url)
     _update_risk_and_alerts(conn, target_id)
@@ -205,6 +210,8 @@ def _apply_signatures(conn, target_id: int, html: str, headers: Dict[str, str], 
         matched, snippet = _regex_search(pattern, haystack)
         if not matched:
             continue
+        verified_flag: bool | None = None
+        confidence: int | None = 40
         if _should_verify_signature(sig.get("name", "")) and ai_configured(conn):
             verified, _reason = verify_signature_match(
                 conn,
@@ -215,7 +222,9 @@ def _apply_signatures(conn, target_id: int, html: str, headers: Dict[str, str], 
             )
             if verified is False:
                 continue
-        insert_match(conn, target_id, sig["id"])
+            verified_flag = True
+            confidence = 90
+        insert_match(conn, target_id, sig["id"], verified_flag, confidence)
 
 
 def _apply_asset_signatures(conn, target_id: int, content: bytes, signatures: List[dict]) -> None:
@@ -226,6 +235,8 @@ def _apply_asset_signatures(conn, target_id: int, content: bytes, signatures: Li
         matched, snippet = _regex_search(sig["pattern"], text)
         if not matched:
             continue
+        verified_flag: bool | None = None
+        confidence: int | None = 40
         if _should_verify_signature(sig.get("name", "")) and ai_configured(conn):
             verified, _reason = verify_signature_match(
                 conn,
@@ -236,7 +247,31 @@ def _apply_asset_signatures(conn, target_id: int, content: bytes, signatures: Li
             )
             if verified is False:
                 continue
-        insert_match(conn, target_id, sig["id"])
+            verified_flag = True
+            confidence = 90
+        insert_match(conn, target_id, sig["id"], verified_flag, confidence)
+
+
+def _apply_alert_rules(conn, target_id: int, html: str, headers: Dict[str, str], url: str) -> None:
+    rules = list_alert_rules(conn)
+    if not rules:
+        return
+    header_text = "\n".join([f"{k}:{v}" for k, v in headers.items()])
+    for rule in rules:
+        if not rule.get("enabled"):
+            continue
+        target_field = rule.get("target_field")
+        pattern = rule.get("pattern") or ""
+        haystack = ""
+        if target_field == "html":
+            haystack = html
+        elif target_field == "headers":
+            haystack = header_text
+        elif target_field == "url":
+            haystack = url
+        matched, _snippet = _regex_search(pattern, haystack)
+        if matched:
+            create_alert(conn, target_id, "rule", f"{rule.get('name')} matched")
 
 def _regex_search(pattern: str, text: str) -> tuple[bool, str | None]:
     try:
@@ -264,7 +299,7 @@ def _apply_yara_html(conn, target_id: int, html: str, yara_rules: List[dict]) ->
         return
     matches = match_yara(html.encode("utf-8", errors="ignore"), yara_rules, "html")
     for rule_id in matches:
-        insert_yara_match(conn, target_id, rule_id, None)
+        insert_yara_match(conn, target_id, rule_id, None, True, 70)
 
 
 def _apply_yara_asset(conn, target_id: int, asset_id: int, content: bytes, yara_rules: List[dict]) -> None:
@@ -272,7 +307,7 @@ def _apply_yara_asset(conn, target_id: int, asset_id: int, content: bytes, yara_
         return
     matches = match_yara(content, yara_rules, "asset")
     for rule_id in matches:
-        insert_yara_match(conn, target_id, rule_id, asset_id)
+        insert_yara_match(conn, target_id, rule_id, asset_id, True, 70)
 
 
 def _materialize_graph(

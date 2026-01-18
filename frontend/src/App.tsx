@@ -1,6 +1,7 @@
 import React from "react";
 import KeyStatusBanner from "./components/KeyStatusBanner";
 import UpdateBanner from "./components/UpdateBanner";
+import QueueStatusBadge from "./components/QueueStatusBadge";
 import LogPanel from "./components/LogPanel";
 import AlertsTab from "./tabs/AlertsTab";
 import CampaignsTab from "./tabs/CampaignsTab";
@@ -51,10 +52,26 @@ export default function App() {
 
   React.useEffect(() => {
     const handler = () => {
+      setActive("scan");
+    };
+    window.addEventListener("open-scan", handler);
+    return () => window.removeEventListener("open-scan", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => {
       setActive("signatures");
     };
     window.addEventListener("open-signatures", handler);
     return () => window.removeEventListener("open-signatures", handler);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => {
+      setActive("iocs");
+    };
+    window.addEventListener("open-iocs", handler);
+    return () => window.removeEventListener("open-iocs", handler);
   }, []);
 
   return (
@@ -65,6 +82,7 @@ export default function App() {
           <span className="subtitle">{t("app_subtitle", lang)}</span>
         </div>
         <div className="row-actions">
+          <QueueStatusBadge />
           <label className="muted">
             {t("lang_label", lang)}
             <select

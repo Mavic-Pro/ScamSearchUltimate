@@ -17,6 +17,7 @@ export default function ExportTab() {
   const [aiPrompt, setAiPrompt] = React.useState("");
   const [aiReply, setAiReply] = React.useState<string | null>(null);
   const [aiStatus, setAiStatus] = React.useState<string | null>(null);
+  const [deltaSince, setDeltaSince] = React.useState<string | null>(() => localStorage.getItem("last_ioc_export"));
 
   const buildIocQuery = () => {
     const qs = new URLSearchParams();
@@ -29,6 +30,13 @@ export default function ExportTab() {
     if (iocDateFrom) qs.set("date_from", iocDateFrom);
     if (iocDateTo) qs.set("date_to", iocDateTo);
     qs.set("format", iocFormat);
+    return qs.toString();
+  };
+
+  const buildDeltaQuery = () => {
+    if (!deltaSince) return buildIocQuery();
+    const qs = new URLSearchParams(buildIocQuery());
+    qs.set("date_from", deltaSince);
     return qs.toString();
   };
 
@@ -148,11 +156,54 @@ export default function ExportTab() {
           <a
             className="button secondary"
             href={`${API_BASE}/api/iocs/export?${buildIocQuery()}`}
-            onClick={() => setStatus(tr("IOC export started.", "Export IOC avviato.", lang))}
+            onClick={() => {
+              setStatus(tr("IOC export started.", "Export IOC avviato.", lang));
+              const now = new Date().toISOString().slice(0, 10);
+              localStorage.setItem("last_ioc_export", now);
+              setDeltaSince(now);
+            }}
           >
             {tr("Export IOC", "Export IOC", lang)}
           </a>
+          <a
+            className="button secondary"
+            href={`${API_BASE}/api/iocs/export?${buildDeltaQuery()}`}
+            onClick={() => {
+              if (!deltaSince) {
+                setStatus(tr("No previous export found.", "Nessun export precedente trovato.", lang));
+                return;
+              }
+              setStatus(tr(`Delta export since ${deltaSince}.`, `Export delta dal ${deltaSince}.`, lang));
+              const now = new Date().toISOString().slice(0, 10);
+              localStorage.setItem("last_ioc_export", now);
+              setDeltaSince(now);
+            }}
+          >
+            {tr("Export IOC Delta", "Export IOC Delta", lang)}
+          </a>
           <button className="secondary" onClick={taxiiPush}>{tr("TAXII Push", "TAXII Push", lang)}</button>
+        </div>
+        <div className="row-actions">
+          <button
+            className="secondary"
+            onClick={() => {
+              setIocFormat("stix");
+              setIocKind("domain");
+              setStatus(tr("Template: STIX domains", "Template: STIX domini", lang));
+            }}
+          >
+            {tr("Template STIX Domains", "Template STIX Domini", lang)}
+          </button>
+          <button
+            className="secondary"
+            onClick={() => {
+              setIocFormat("misp");
+              setIocKind("url");
+              setStatus(tr("Template: MISP URLs", "Template: MISP URL", lang));
+            }}
+          >
+            {tr("Template MISP URLs", "Template MISP URL", lang)}
+          </button>
         </div>
         {status && <div className="muted">{status}</div>}
       </div>
@@ -164,6 +215,14 @@ export default function ExportTab() {
             <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. best format for sharing", "Es: formato migliore per condivisione", lang)} />
           </label>
           <button onClick={runAi} className="secondary">{tr("Get Suggestions", "Ottieni suggerimenti", lang)}</button>
+        </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => setAiPrompt(tr("best format for TAXII sharing", "miglior formato per TAXII", lang))}>
+            {tr("TAXII Format", "Formato TAXII", lang)}
+          </button>
+          <button className="secondary" onClick={() => setAiPrompt(tr("minimize false positives", "riduci falsi positivi", lang))}>
+            {tr("Reduce FP", "Riduci FP", lang)}
+          </button>
         </div>
         {aiStatus && <div className="muted">{aiStatus}</div>}
         {aiReply && <div className="muted">{aiReply}</div>}

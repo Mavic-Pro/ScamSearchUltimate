@@ -55,6 +55,16 @@ export default function LabTab() {
   const [aiIncludeDom, setAiIncludeDom] = React.useState(false);
   const [aiIncludeIocs, setAiIncludeIocs] = React.useState(true);
   const [showRedirects, setShowRedirects] = React.useState(false);
+  const [queueNotice, setQueueNotice] = React.useState<string | null>(null);
+  const queueTimer = React.useRef<number | null>(null);
+  const [verifiedOnly, setVerifiedOnly] = React.useState(false);
+  const [minConfidence, setMinConfidence] = React.useState(0);
+  const [timeline, setTimeline] = React.useState<Array<Record<string, any>>>([]);
+  const [timelineStatus, setTimelineStatus] = React.useState<string | null>(null);
+  const [diffLeft, setDiffLeft] = React.useState("");
+  const [diffRight, setDiffRight] = React.useState("");
+  const [diffResult, setDiffResult] = React.useState<{ html: string; headers: string } | null>(null);
+  const [diffStatus, setDiffStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     if (!targetId) return;
@@ -74,8 +84,31 @@ export default function LabTab() {
       setWhoisError(null);
       await loadJobs(res.data.target?.url ? String(res.data.target.url) : null);
       await loadWhois();
+      await loadTimeline();
     } else {
       setError(res.error);
+    }
+  };
+
+  const loadTimeline = async () => {
+    if (!targetId) return;
+    setTimelineStatus(tr("Loading timeline...", "Caricamento timeline...", lang));
+    const res = await safeGet<Array<Record<string, any>>>(`/api/lab/${targetId}/timeline`);
+    if (res.ok) {
+      setTimeline(res.data);
+      setTimelineStatus(null);
+    } else {
+      setTimelineStatus(res.error);
+    }
+  };
+
+  const loadConfidenceSetting = async () => {
+    const res = await safeGet<{ key: string; value: string | null }>("/api/settings/CONFIDENCE_MIN");
+    if (res.ok && res.data.value) {
+      const value = Number(res.data.value);
+      if (Number.isFinite(value)) {
+        setMinConfidence(value);
+      }
     }
   };
 
@@ -83,6 +116,7 @@ export default function LabTab() {
     if (targetId) {
       load();
     }
+    loadConfidenceSetting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -91,6 +125,14 @@ export default function LabTab() {
       localStorage.setItem("lab_target_id", targetId);
     }
   }, [targetId]);
+
+  const flashQueueNotice = (message: string) => {
+    setQueueNotice(message);
+    if (queueTimer.current) {
+      window.clearTimeout(queueTimer.current);
+    }
+    queueTimer.current = window.setTimeout(() => setQueueNotice(null), 4000);
+  };
 
   const queuePivotUrls = async (rawUrls: Array<string | null | undefined>, sourceLabel: string, limit = 200) => {
     const urls = Array.from(
@@ -102,13 +144,13 @@ export default function LabTab() {
     }
     const queued = await safePost<{ queued: number[] }>("/api/scan/bulk", { urls: urls.slice(0, limit) });
     if (queued.ok) {
-      setActionStatus(
-        tr(
-          `Queued ${queued.data.queued?.length ?? 0} scans from ${sourceLabel}.`,
-          `Messi in coda ${queued.data.queued?.length ?? 0} scan da ${sourceLabel}.`,
-          lang
-        )
+      const message = tr(
+        `Queued ${queued.data.queued?.length ?? 0} scans from ${sourceLabel}.`,
+        `Messi in coda ${queued.data.queued?.length ?? 0} scan da ${sourceLabel}.`,
+        lang
       );
+      setActionStatus(message);
+      flashQueueNotice(message);
     } else {
       setActionStatus(queued.error);
     }
@@ -231,7 +273,7 @@ export default function LabTab() {
     const res = await safePost<{ queued: number[] }>("/api/scan", { url });
     if (res.ok) {
       setJobStatus(tr("Rescan queued.", "Riscansione in coda.", lang));
-      window.alert(tr("Rescan queued.", "Riscansione in coda.", lang));
+      flashQueueNotice(tr("Rescan queued.", "Riscansione in coda.", lang));
       await loadJobs(String(url));
     } else {
       setJobStatus(res.error);
@@ -268,6 +310,72 @@ export default function LabTab() {
     } else {
       setJobStatus(res.error);
     }
+  };
+
+  const runDiff = async () => {
+    if (!diffLeft || !diffRight) return;
+    setDiffStatus(tr("Diff running...", "Diff in corso...", lang));
+    const res = await safeGet<{ html: string; headers: string }>(
+      `/api/lab/diff?left_id=${encodeURIComponent(diffLeft)}&right_id=${encodeURIComponent(diffRight)}`
+    );
+    if (res.ok) {
+      setDiffResult(res.data);
+      setDiffStatus(null);
+    } else {
+      setDiffStatus(res.error);
+    }
+  };
+
+  const copyChain = async (chain: any[]) => {
+    if (!chain.length) return;
+    const text = chain.map((step) => `${step.status || ""} ${step.url} ${step.location ? `-> ${step.location}` : ""}`.trim()).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      flashQueueNotice(tr("Redirect chain copied.", "Redirect chain copiato.", lang));
+    } catch (err) {
+      flashQueueNotice(tr("Copy failed.", "Copia fallita.", lang));
+    }
+  };
+
+  const saveChainAsIocs = async (chain: any[], finalOnly = false, domainsOnly = false) => {
+    if (!chain.length) return;
+    const steps = finalOnly ? [chain[chain.length - 1]] : chain.slice(0, 20);
+    const seen = new Set<string>();
+    let count = 0;
+    for (const step of steps) {
+      if (!step?.url) continue;
+      let iocKind = "url";
+      let value = String(step.url);
+      let dom = data?.target?.domain || null;
+      if (domainsOnly) {
+        try {
+          const parsed = new URL(String(step.url));
+          iocKind = "domain";
+          value = parsed.hostname;
+          dom = parsed.hostname;
+        } catch (err) {
+          continue;
+        }
+      }
+      const key = `${iocKind}:${value}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      await safePost("/api/iocs", {
+        kind: iocKind,
+        value,
+        source: "redirect_chain",
+        target_id: targetId ? Number(targetId) : null,
+        url: iocKind === "url" ? String(step.url) : null,
+        domain: dom
+      });
+      count += 1;
+    }
+    const message = domainsOnly
+      ? tr(`Saved ${count} domains as IOCs.`, `Salvati ${count} domini come IOC.`, lang)
+      : tr(`Saved ${count} URLs as IOCs.`, `Salvati ${count} URL come IOC.`, lang);
+    flashQueueNotice(message);
   };
 
   const runAi = async () => {
@@ -323,7 +431,7 @@ export default function LabTab() {
     const res = await safePost<{ queued: number[] }>("/api/scan", { url });
     if (res.ok) {
       setJobStatus(tr("Rescan queued.", "Riscansione in coda.", lang));
-      window.alert(tr("Rescan queued.", "Riscansione in coda.", lang));
+      flashQueueNotice(tr("Rescan queued.", "Riscansione in coda.", lang));
       await loadJobs(String(url));
     } else {
       setJobStatus(res.error);
@@ -479,6 +587,7 @@ export default function LabTab() {
           </label>
           <button onClick={load}>{tr("Load", "Carica", lang)}</button>
         </div>
+        {queueNotice && <div className="warning-banner">{queueNotice}</div>}
       </div>
       {data && (
         <div className="panel">
@@ -489,6 +598,7 @@ export default function LabTab() {
             <div><strong>IP:</strong> {data.target?.ip || "-"}</div>
             <div><strong>JARM:</strong> {data.target?.jarm || "-"}</div>
             <div><strong>{tr("Favicon", "Favicon", lang)}:</strong> {data.target?.favicon_hash || "-"}</div>
+            <div><strong>{tr("Tags", "Tag", lang)}:</strong> {data.target?.tags || "-"}</div>
           </div>
           {(() => {
             const chain = parseChain((data.target as any)?.redirect_chain);
@@ -499,6 +609,18 @@ export default function LabTab() {
                 <div className="row-actions">
                   <button className="secondary" onClick={() => setShowRedirects(!showRedirects)}>
                     {showRedirects ? tr("Hide Redirects", "Nascondi Redirects", lang) : tr("Show Redirects", "Mostra Redirects", lang)} ({chainCount})
+                  </button>
+                  <button className="secondary" onClick={() => copyChain(chain)}>
+                    {tr("Copy Chain", "Copia chain", lang)}
+                  </button>
+                  <button className="secondary" onClick={() => saveChainAsIocs(chain)}>
+                    {tr("Save IOCs", "Salva IOC", lang)}
+                  </button>
+                  <button className="secondary" onClick={() => saveChainAsIocs(chain, true)}>
+                    {tr("Save Final URL", "Salva URL finale", lang)}
+                  </button>
+                  <button className="secondary" onClick={() => saveChainAsIocs(chain, false, true)}>
+                    {tr("Save Domains", "Salva domini", lang)}
                   </button>
                 </div>
                 {showRedirects && (
@@ -520,7 +642,7 @@ export default function LabTab() {
                 {tr("Rescan target URL", "Riscansiona URL target", lang)}
               </button>
             )}
-            <button onClick={deleteTarget} className="secondary" title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}>
+            <button onClick={deleteTarget} className="secondary danger" title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}>
               {tr("Delete target", "Elimina target", lang)}
             </button>
             {actionStatus && <span className="status">{actionStatus}</span>}
@@ -837,11 +959,11 @@ export default function LabTab() {
                         </button>
                       </>
                     )}
-                    <button
-                      onClick={() => updateJob(job.id, "remove")}
-                      className="secondary"
-                      title={tr("Remove this job from the queue", "Rimuovi questo job dalla coda", lang)}
-                    >
+                  <button
+                    onClick={() => updateJob(job.id, "remove")}
+                    className="secondary danger"
+                    title={tr("Remove this job from the queue", "Rimuovi questo job dalla coda", lang)}
+                  >
                       {tr("Remove job", "Rimuovi job", lang)}
                     </button>
                   </div>
@@ -903,50 +1025,90 @@ export default function LabTab() {
             </div>
           )}
           <h3>{tr("Signature Matches", "Match Firme", lang)}</h3>
-          {data.matches.length === 0 ? (
-            <div className="muted">{tr("No signature matches found.", "Nessun match di firma trovato.", lang)}</div>
-          ) : (
-            <div className="table">
-              {data.matches.map((m) => (
-                <div key={String(m.id)} className="row simple-row">
-                  <span>#{m.id}</span>
-                  <span className="truncate">{m.name || m.signature_id}</span>
-                  <span>{m.target_field || "-"}</span>
-                  <span className="hash-value truncate">{m.pattern || "-"}</span>
-                  <div className="row-actions">
-                    {m.pattern && (
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          window.dispatchEvent(
-                            new CustomEvent("open-signatures", {
-                              detail: { pattern: m.pattern, targetField: m.target_field || "html" }
-                            })
-                          )
-                        }
-                      >
-                        {tr("Pivot", "Pivot", lang)}
-                      </button>
-                    )}
+          <div className="row-actions" style={{ marginBottom: "8px" }}>
+            <label>
+              {tr("Verified only", "Solo verificati", lang)}
+              <input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} />
+            </label>
+            <label>
+              {tr("Min confidence", "Confidenza min", lang)}
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={minConfidence}
+                onChange={(e) => setMinConfidence(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          {(() => {
+            const filteredMatches = data.matches.filter((m) => {
+              const conf = Number(m.confidence ?? 0);
+              const verified = m.verified === true;
+              if (verifiedOnly && !verified) return false;
+              if (conf < minConfidence) return false;
+              return true;
+            });
+            if (filteredMatches.length === 0) {
+              return <div className="muted">{tr("No signature matches found.", "Nessun match di firma trovato.", lang)}</div>;
+            }
+            return (
+              <div className="table">
+                {filteredMatches.map((m) => (
+                  <div key={String(m.id)} className="row simple-row">
+                    <span>#{m.id}</span>
+                    <span className="truncate">{m.name || m.signature_id}</span>
+                    <span>{m.target_field || "-"}</span>
+                    <span className="hash-value truncate">{m.pattern || "-"}</span>
+                    <span>{m.verified === true ? "verified" : "unverified"}</span>
+                    <span>{m.confidence ?? "-"}</span>
+                    <div className="row-actions">
+                      {m.pattern && (
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            window.dispatchEvent(
+                              new CustomEvent("open-signatures", {
+                                detail: { pattern: m.pattern, targetField: m.target_field || "html" }
+                              })
+                            )
+                          }
+                        >
+                          {tr("Pivot", "Pivot", lang)}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            );
+          })()}
           <h3>{tr("YARA Matches", "Match YARA", lang)}</h3>
-          {data.yara && data.yara.length > 0 ? (
-            <div className="table">
-              {data.yara.map((m) => (
-                <div key={String(m.id)} className="row simple-row">
-                  <span>#{m.id}</span>
-                  <span>{m.name || m.rule_id}</span>
-                  <span className="hash-value">{m.created_at || "-"}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="muted">{tr("No YARA matches found.", "Nessun match YARA trovato.", lang)}</div>
-          )}
+          {(() => {
+            const yaraMatches = (data.yara || []).filter((m) => {
+              const conf = Number(m.confidence ?? 0);
+              const verified = m.verified === true;
+              if (verifiedOnly && !verified) return false;
+              if (conf < minConfidence) return false;
+              return true;
+            });
+            if (yaraMatches.length === 0) {
+              return <div className="muted">{tr("No YARA matches found.", "Nessun match YARA trovato.", lang)}</div>;
+            }
+            return (
+              <div className="table">
+                {yaraMatches.map((m) => (
+                  <div key={String(m.id)} className="row simple-row">
+                    <span>#{m.id}</span>
+                    <span>{m.name || m.rule_id}</span>
+                    <span>{m.target_field || "-"}</span>
+                    <span>{m.verified === true ? "verified" : "unverified"}</span>
+                    <span>{m.confidence ?? "-"}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           <div className="row-actions" style={{ marginTop: "12px" }}>
             <button className="secondary" onClick={() => setShowRaw(!showRaw)}>
               {showRaw ? tr("Hide JSON", "Nascondi JSON", lang) : tr("Show JSON", "Mostra JSON", lang)}
@@ -955,6 +1117,45 @@ export default function LabTab() {
           {showRaw && <pre>{JSON.stringify(data, null, 2)}</pre>}
         </div>
       )}
+      <div className="panel">
+        <h3>{tr("Timeline", "Timeline", lang)}</h3>
+        <div className="row-actions">
+          <button className="secondary" onClick={loadTimeline}>{tr("Refresh", "Aggiorna", lang)}</button>
+          {timelineStatus && <span className="status">{timelineStatus}</span>}
+        </div>
+        <div className="table">
+          {timeline.map((item, idx) => (
+            <div key={`${item.kind}-${idx}`} className="row">
+              <span>{item.kind}</span>
+              <span className="truncate">{item.message}</span>
+              <span className="hash-value">{item.created_at || "-"}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("Diff Targets", "Diff Target", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Left Target ID", "Target ID sinistro", lang)}
+            <input value={diffLeft} onChange={(e) => setDiffLeft(e.target.value)} />
+          </label>
+          <label>
+            {tr("Right Target ID", "Target ID destro", lang)}
+            <input value={diffRight} onChange={(e) => setDiffRight(e.target.value)} />
+          </label>
+          <button onClick={runDiff} className="secondary">{tr("Run Diff", "Esegui Diff", lang)}</button>
+        </div>
+        {diffStatus && <div className="muted">{diffStatus}</div>}
+        {diffResult && (
+          <div className="diff-panel">
+            <h4>HTML</h4>
+            <pre>{diffResult.html || "-"}</pre>
+            <h4>Headers</h4>
+            <pre>{diffResult.headers || "-"}</pre>
+          </div>
+        )}
+      </div>
       <div className="panel">
         <h3>{tr("AI Analysis", "Analisi AI", lang)}</h3>
         <div className="form-grid">

@@ -1,10 +1,10 @@
-import os
 import time
 
 from backend.src.core.scan_minimal import run_minimal_scan_job
 from backend.src.core.hunt import run_scheduled_hunts
 from backend.src.db.connection import connect, load_db_config
 from backend.src.db.dao.jobs import get_job_status, lease_next_job, requeue_stuck, update_job_status
+from backend.src.core.settings import get_setting_value
 from backend.src.utils.logging import log_error, log_info
 
 
@@ -16,12 +16,12 @@ JOB_HANDLERS = {
 def run_worker(poll_seconds: int = 2, lease_seconds: int = 30) -> None:
     cfg = load_db_config()
     last_hunt_check = 0.0
-    hunt_poll_seconds = float(os.getenv("HUNT_AUTORUN_POLL_SECONDS", "10"))
-    hunt_enabled = os.getenv("HUNT_AUTORUN_ENABLED", "1") == "1"
     while True:
         conn = connect(cfg)
         try:
             requeue_stuck(conn)
+            hunt_enabled = get_setting_value(conn, "HUNT_AUTORUN_ENABLED", "1") == "1"
+            hunt_poll_seconds = float(get_setting_value(conn, "HUNT_AUTORUN_POLL_SECONDS", "10") or 10)
             if hunt_enabled and time.time() - last_hunt_check >= hunt_poll_seconds:
                 run_scheduled_hunts(conn)
                 last_hunt_check = time.time()

@@ -12,6 +12,9 @@ const KEYS = [
   "AI_ENDPOINT",
   "AI_KEY",
   "AI_MODEL",
+  "HUNT_AUTORUN_ENABLED",
+  "HUNT_AUTORUN_POLL_SECONDS",
+  "CONFIDENCE_MIN",
   "REMOTE_FAVICON_ENABLED",
   "TAXII_URL",
   "TAXII_COLLECTION",
@@ -119,6 +122,9 @@ export default function SettingsTab() {
   const [aiTestStatus, setAiTestStatus] = React.useState<string | null>(null);
   const [aiTaskTestStatus, setAiTaskTestStatus] = React.useState<string | null>(null);
   const [aiTaskName, setAiTaskName] = React.useState("scan_queue_summary");
+  const [storageAudit, setStorageAudit] = React.useState<{ path: string; size_bytes: number; files: number } | null>(null);
+  const [keyHealth, setKeyHealth] = React.useState<Record<string, any> | null>(null);
+  const [healthStatus, setHealthStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const next: Record<string, string> = {};
@@ -244,6 +250,24 @@ export default function SettingsTab() {
     }
   };
 
+  const loadStorageAudit = async () => {
+    const res = await safeGet<{ path: string; size_bytes: number; files: number }>("/api/settings/storage-audit");
+    if (res.ok) {
+      setStorageAudit(res.data);
+    }
+  };
+
+  const loadKeyHealth = async (mode: "config" | "live" = "config") => {
+    setHealthStatus(tr("Checking keys...", "Verifica key...", lang));
+    const res = await safeGet<Record<string, any>>(`/api/settings/key-health?mode=${mode}`);
+    if (res.ok) {
+      setKeyHealth(res.data);
+      setHealthStatus(null);
+    } else {
+      setHealthStatus(res.error);
+    }
+  };
+
   return (
     <div className="tab">
       <div className="tab-header">
@@ -351,7 +375,43 @@ export default function SettingsTab() {
               {tr("Optional. Leave blank to use provider defaults.", "Opzionale. Lascia vuoto per usare i default del provider.", lang)}
             </div>
           </label>
-          {KEYS.filter((key) => !["AI_PROVIDER", "AI_ENDPOINT", "AI_KEY", "AI_MODEL"].includes(key)).map((key) => (
+          <label>
+            {tr("Hunt Auto-run", "Auto-run Hunt", lang)}
+            <input
+              type="checkbox"
+              checked={values.HUNT_AUTORUN_ENABLED === "1"}
+              onChange={(e) => setValues({ ...values, HUNT_AUTORUN_ENABLED: e.target.checked ? "1" : "0" })}
+            />
+            <div className="muted">
+              {tr("Runs enabled hunts automatically.", "Esegue automaticamente le hunt abilitate.", lang)}
+            </div>
+          </label>
+          <label>
+            {tr("Hunt Auto-run Poll (sec)", "Poll Auto-run Hunt (sec)", lang)}
+            <input
+              type="number"
+              min={5}
+              value={values.HUNT_AUTORUN_POLL_SECONDS || "10"}
+              onChange={(e) => setValues({ ...values, HUNT_AUTORUN_POLL_SECONDS: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Worker checks scheduled hunts on this interval.", "Il worker controlla le hunt programmate a questo intervallo.", lang)}
+            </div>
+          </label>
+          <label>
+            {tr("Min Confidence (matches)", "Confidenza min (match)", lang)}
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={values.CONFIDENCE_MIN || "0"}
+              onChange={(e) => setValues({ ...values, CONFIDENCE_MIN: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Default filter for signature/YARA matches.", "Filtro predefinito per match firma/YARA.", lang)}
+            </div>
+          </label>
+          {KEYS.filter((key) => !["AI_PROVIDER", "AI_ENDPOINT", "AI_KEY", "AI_MODEL", "HUNT_AUTORUN_ENABLED", "HUNT_AUTORUN_POLL_SECONDS", "CONFIDENCE_MIN"].includes(key)).map((key) => (
             <label key={key}>
               {key}
               {key === "REMOTE_FAVICON_ENABLED" ? (
@@ -391,6 +451,31 @@ export default function SettingsTab() {
           {aiTestStatus && <span className="status">{aiTestStatus}</span>}
           {aiTaskTestStatus && <span className="status">{aiTaskTestStatus}</span>}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("System Health", "Salute Sistema", lang)}</h3>
+        <div className="row-actions">
+          <button className="secondary" onClick={() => loadKeyHealth("config")}>{tr("Check API keys", "Verifica API key", lang)}</button>
+          <button className="secondary" onClick={() => loadKeyHealth("live")}>{tr("Test API keys", "Test API key", lang)}</button>
+          <button className="secondary" onClick={loadStorageAudit}>{tr("Storage audit", "Audit storage", lang)}</button>
+          {healthStatus && <span className="status">{healthStatus}</span>}
+        </div>
+        {keyHealth && (
+          <div className="table">
+            {Object.entries(keyHealth).map(([key, info]) => (
+              <div key={key} className="row">
+                <span>{key}</span>
+                <span>{info.status}</span>
+                <span className="truncate">{info.message || "-"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {storageAudit && (
+          <div className="muted">
+            {tr("Storage", "Storage", lang)}: {storageAudit.path} | {storageAudit.files} files | {Math.round(storageAudit.size_bytes / 1024 / 1024)} MB
+          </div>
+        )}
       </div>
       {showFaviconConfirm && (
         <div className="modal-backdrop">

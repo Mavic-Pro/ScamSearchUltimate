@@ -1,10 +1,13 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+import json
+
 from backend.src.core.providers.urlscan import urlscan_get_redirects, urlscan_search
 from backend.src.core.settings import get_setting_value
 from backend.src.db.connection import connect, load_db_config
 from backend.src.db.dao.urlscan_local import search_local
+from backend.src.db.dao.urlscan_remote import get_remote_redirects, upsert_remote_redirects
 from backend.src.utils.api import fail, ok
 
 router = APIRouter(prefix="/api/urlscan", tags=["urlscan"])
@@ -53,9 +56,20 @@ def remote_redirects(url: str):
     cfg = load_db_config()
     conn = connect(cfg)
     try:
+        cached = get_remote_redirects(conn, url)
+        if cached and cached.get("redirect_chain"):
+            try:
+                chain = json.loads(cached["redirect_chain"])
+            except Exception:
+                chain = []
+            return ok({"chain": chain, "result": cached.get("result_url")})
         result = urlscan_get_redirects(conn, url)
         if "error" in result:
             return fail(result["error"])
+        try:
+            upsert_remote_redirects(conn, url, json.dumps(result.get("chain", []), ensure_ascii=True), result.get("result"))
+        except Exception:
+            pass
         return ok(result)
     finally:
         conn.close()

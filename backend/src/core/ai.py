@@ -164,6 +164,37 @@ def ai_configured(conn) -> bool:
     return False
 
 
+def suggest_tags(conn, target: dict, html_excerpt: str, headers_text: str) -> list[str]:
+    if not ai_configured(conn):
+        return []
+    system = (
+        "You label OSINT targets. Return JSON only: {\"tags\": [\"tag1\", \"tag2\"]}. "
+        "Tags should be short and lowercase (e.g. phishing, bank, crypto, wallet, brand, login)."
+    )
+    user = (
+        f"URL: {target.get('url')}\n"
+        f"Domain: {target.get('domain')}\n"
+        f"Title: {target.get('title')}\n"
+        f"Headers:\n{headers_text[:2000]}\n"
+        f"HTML snippet:\n{html_excerpt[:2000]}\n"
+    )
+    result = chat(conn, [{"role": "system", "content": system}, {"role": "user", "content": user}])
+    if "error" in result:
+        return []
+    parsed = _safe_json(result.get("reply", ""))
+    tags = parsed.get("tags") if isinstance(parsed, dict) else None
+    if not isinstance(tags, list):
+        return []
+    cleaned = []
+    for tag in tags[:10]:
+        if not tag:
+            continue
+        t = str(tag).strip().lower()
+        if t and t not in cleaned:
+            cleaned.append(t)
+    return cleaned
+
+
 def verify_signature_match(
     conn,
     signature_name: str,
@@ -190,18 +221,40 @@ def verify_signature_match(
     return bool(parsed.get("verified")), str(parsed.get("reason") or "")
 
 
-def chat(conn, messages: list[dict], target_id: int | None = None, include_dom: bool = False, include_iocs: bool = False) -> dict:
+def _normalize_target_ids(target_id: int | None, target_ids: list[int] | None) -> list[int]:
+    ids: list[int] = []
+    if target_id:
+        ids.append(target_id)
+    if target_ids:
+        for tid in target_ids:
+            if tid and tid not in ids:
+                ids.append(int(tid))
+    return ids
+
+
+def chat(
+    conn,
+    messages: list[dict],
+    target_id: int | None = None,
+    include_dom: bool = False,
+    include_iocs: bool = False,
+    target_ids: list[int] | None = None,
+) -> dict:
     provider = _normalize_provider(get_setting_value(conn, "AI_PROVIDER", ""))
     endpoint = get_setting_value(conn, "AI_ENDPOINT")
     api_key = get_setting_value(conn, "AI_KEY")
     model_override = get_setting_value(conn, "AI_MODEL", "")
 
     final_messages = list(messages)
-    if target_id:
-        ctx = _load_context(conn, target_id, include_dom, include_iocs)
+    ids = _normalize_target_ids(target_id, target_ids)
+    if ids:
+        context_blocks: list[str] = []
+        for tid in ids[:10]:
+            ctx = _load_context(conn, tid, include_dom, include_iocs)
+            context_blocks.append(f"TARGET {tid}\n{ctx}")
         final_messages = [
             {"role": "system", "content": "Context from target analysis is provided below."},
-            {"role": "system", "content": ctx},
+            {"role": "system", "content": "\n\n".join(context_blocks)},
             *final_messages,
         ]
 
@@ -274,7 +327,14 @@ def chat(conn, messages: list[dict], target_id: int | None = None, include_dom: 
         return {"error": str(exc)}
 
 
-def suggest_rules(conn, prompt: str, target_id: int | None = None, include_dom: bool = False, include_iocs: bool = False) -> Dict[str, Any]:
+def suggest_rules(
+    conn,
+    prompt: str,
+    target_id: int | None = None,
+    include_dom: bool = False,
+    include_iocs: bool = False,
+    target_ids: list[int] | None = None,
+) -> Dict[str, Any]:
     heuristic = _heuristic_suggestions(prompt)
     endpoint = get_setting_value(conn, "AI_ENDPOINT")
     if not endpoint:
@@ -290,7 +350,14 @@ def suggest_rules(conn, prompt: str, target_id: int | None = None, include_dom: 
         {"role": "system", "content": system},
         {"role": "user", "content": f"Goal: {prompt}"},
     ]
-    result = chat(conn, messages, target_id=target_id, include_dom=include_dom, include_iocs=include_iocs)
+    result = chat(
+        conn,
+        messages,
+        target_id=target_id,
+        include_dom=include_dom,
+        include_iocs=include_iocs,
+        target_ids=target_ids,
+    )
     if "error" in result:
         return {"source": "heuristic", **heuristic}
     parsed = _safe_json(result.get("reply", ""))
@@ -461,6 +528,12 @@ TASK_PROMPTS: Dict[str, str] = {
         "You are an OSINT analyst. Recommend export filters, format, and TAXII mapping based on "
         "current IOC filters and goals."
     ),
+    "pivot_suggestions": (
+        "You are an OSINT analyst. Return JSON only with key: pivots (list). "
+        "Each pivot item: {kind, value, reason}. "
+        "kind should be one of: domain, url, ip, dom_hash, headers_hash, favicon_hash, jarm, ioc. "
+        "No extra keys."
+    ),
 }
 
 
@@ -490,6 +563,7 @@ def run_task(
     target_id: int | None = None,
     include_dom: bool = False,
     include_iocs: bool = False,
+    target_ids: list[int] | None = None,
 ) -> Dict[str, Any]:
     system = TASK_PROMPTS.get(task)
     if not system:
@@ -508,7 +582,14 @@ def run_task(
         {"role": "user", "content": "\n".join(payload_lines)},
     ]
 
-    result = chat(conn, messages, target_id=target_id, include_dom=include_dom, include_iocs=include_iocs)
+    result = chat(
+        conn,
+        messages,
+        target_id=target_id,
+        include_dom=include_dom,
+        include_iocs=include_iocs,
+        target_ids=target_ids,
+    )
     if "error" in result:
         return result
     reply = result.get("reply", "")
@@ -538,4 +619,22 @@ def run_task(
         if not validated:
             return {"reply": reply}
         return {"reply": validated.get("rationale", ""), "data": validated}
+    if task == "pivot_suggestions":
+        parsed = _safe_json(reply)
+        if not parsed or "pivots" not in parsed:
+            return {"reply": reply}
+        pivots = parsed.get("pivots")
+        if not isinstance(pivots, list):
+            return {"reply": reply}
+        cleaned = []
+        for item in pivots[:20]:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("kind")
+            value = item.get("value")
+            reason = item.get("reason", "")
+            if not kind or not value:
+                continue
+            cleaned.append({"kind": str(kind), "value": str(value), "reason": str(reason)})
+        return {"reply": "", "data": {"pivots": cleaned}}
     return {"reply": reply}
