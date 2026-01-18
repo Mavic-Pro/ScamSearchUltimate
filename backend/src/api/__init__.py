@@ -19,6 +19,7 @@ from backend.src.api.ai import router as ai_router
 from backend.src.api.iocs import router as iocs_router
 from backend.src.api.targets import router as targets_router
 from backend.src.api.yara import router as yara_router
+from backend.src.api.update import router as update_router
 
 api_router = APIRouter()
 api_router.include_router(scan_router)
@@ -40,3 +41,4 @@ api_router.include_router(ai_router)
 api_router.include_router(iocs_router)
 api_router.include_router(targets_router)
 api_router.include_router(yara_router)
+api_router.include_router(update_router)

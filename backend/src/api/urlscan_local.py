@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.src.core.providers.urlscan import urlscan_search
+from backend.src.core.providers.urlscan import urlscan_get_redirects, urlscan_search
 from backend.src.core.settings import get_setting_value
 from backend.src.db.connection import connect, load_db_config
 from backend.src.db.dao.urlscan_local import search_local
-from backend.src.utils.api import ok
+from backend.src.utils.api import fail, ok
 
 router = APIRouter(prefix="/api/urlscan", tags=["urlscan"])
 
@@ -44,5 +44,18 @@ def search(req: UrlscanQuery):
         if not remote and not get_setting_value(conn, "URLSCAN_KEY"):
             warning = "URLSCAN_KEY mancante: search remoto disabilitato."
         return ok({"local": local, "remote": remote, "warning": warning})
+    finally:
+        conn.close()
+
+
+@router.get("/redirects/remote")
+def remote_redirects(url: str):
+    cfg = load_db_config()
+    conn = connect(cfg)
+    try:
+        result = urlscan_get_redirects(conn, url)
+        if "error" in result:
+            return fail(result["error"])
+        return ok(result)
     finally:
         conn.close()

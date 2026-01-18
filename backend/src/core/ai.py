@@ -1,7 +1,6 @@
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import requests
 
@@ -45,16 +44,157 @@ def _load_context(conn, target_id: int, include_dom: bool, include_iocs: bool) -
     return "\n".join(context_lines)
 
 
-def chat(conn, messages: list[dict], target_id: int | None = None, include_dom: bool = False, include_iocs: bool = False) -> dict:
-    provider = get_setting_value(conn, "AI_PROVIDER", "")
+def _normalize_provider(provider: str | None) -> str:
+    if not provider:
+        return "openai"
+    raw = provider.strip().lower()
+    if raw in {"anthropic", "claude"}:
+        return "claude"
+    if raw in {"gemini", "google"}:
+        return "gemini"
+    if raw in {"nexos", "nexos.ai"}:
+        return "nexos"
+    if raw in {"ollama", "local-ollama"}:
+        return "ollama"
+    if raw in {"openai", "openai-compatible", "openai_compatible"}:
+        return "openai"
+    return raw
+
+
+def _default_base(provider: str) -> str | None:
+    defaults = {
+        "openai": "https://api.openai.com",
+        "gemini": "https://generativelanguage.googleapis.com",
+        "nexos": "https://api.nexos.ai",
+        "claude": "https://api.anthropic.com",
+        "ollama": "http://localhost:11434",
+    }
+    return defaults.get(provider)
+
+
+def _openai_endpoint(base: str | None) -> str | None:
+    if not base:
+        return None
+    trimmed = base.rstrip("/")
+    if trimmed.endswith("/chat/completions"):
+        return trimmed
+    if trimmed.endswith("/v1"):
+        return f"{trimmed}/chat/completions"
+    return f"{trimmed}/v1/chat/completions"
+
+
+def _gemini_payload(messages: list[dict]) -> Tuple[dict, str | None]:
+    system_parts: List[str] = []
+    contents: List[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = str(msg.get("content", ""))
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append(content)
+            continue
+        gemini_role = "user" if role == "user" else "model"
+        contents.append({"role": gemini_role, "parts": [{"text": content}]})
+    payload: Dict[str, Any] = {"contents": contents or [{"role": "user", "parts": [{"text": ""}]}]}
+    system_text = "\n\n".join(system_parts).strip() or None
+    if system_text:
+        payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+    payload["generationConfig"] = {"maxOutputTokens": 1024}
+    return payload, system_text
+
+
+def _claude_payload(messages: list[dict]) -> Tuple[dict, str | None]:
+    system_parts: List[str] = []
+    content_messages: List[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = str(msg.get("content", ""))
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append(content)
+            continue
+        claude_role = "user" if role == "user" else "assistant"
+        content_messages.append({"role": claude_role, "content": [{"type": "text", "text": content}]})
+    system_text = "\n\n".join(system_parts).strip() or None
+    payload = {"messages": content_messages or [{"role": "user", "content": [{"type": "text", "text": ""}]}]}
+    if system_text:
+        payload["system"] = system_text
+    payload["max_tokens"] = 1024
+    return payload, system_text
+
+
+def _extract_openai_content(data: dict) -> str:
+    return data["choices"][0]["message"]["content"]
+
+
+def _extract_gemini_content(data: dict) -> str:
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def _extract_claude_content(data: dict) -> str:
+    parts = data.get("content") or []
+    texts = [part.get("text", "") for part in parts if isinstance(part, dict)]
+    return "".join(texts).strip()
+
+
+def _api_error(resp: requests.Response, data: dict | None) -> str:
+    if data and isinstance(data, dict):
+        err = data.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message") or err.get("detail") or err.get("type")
+            if msg:
+                return str(msg)
+        if isinstance(err, str):
+            return err
+    return f"AI API error ({resp.status_code})"
+
+
+def ai_configured(conn) -> bool:
+    provider = _normalize_provider(get_setting_value(conn, "AI_PROVIDER", ""))
     endpoint = get_setting_value(conn, "AI_ENDPOINT")
     api_key = get_setting_value(conn, "AI_KEY")
-    if not endpoint:
-        return {"error": "AI_ENDPOINT non configurato"}
-
-    headers = {"Content-Type": "application/json"}
+    if provider == "ollama":
+        return True
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        return True
+    if endpoint:
+        return True
+    return False
+
+
+def verify_signature_match(
+    conn,
+    signature_name: str,
+    target_field: str,
+    pattern: str,
+    snippet: str,
+) -> tuple[bool | None, str | None]:
+    system = (
+        "You verify if a regex match is a real sensitive key or crypto wallet address. "
+        "Return JSON only: {\"verified\": true|false, \"reason\": \"...\"}."
+    )
+    user = (
+        f"Signature: {signature_name}\n"
+        f"Target: {target_field}\n"
+        f"Pattern: {pattern}\n"
+        f"Snippet:\n{snippet}\n"
+    )
+    result = chat(conn, [{"role": "system", "content": system}, {"role": "user", "content": user}])
+    if "error" in result:
+        return None, result.get("error")
+    parsed = _safe_json(result.get("reply", ""))
+    if not parsed or "verified" not in parsed:
+        return None, None
+    return bool(parsed.get("verified")), str(parsed.get("reason") or "")
+
+
+def chat(conn, messages: list[dict], target_id: int | None = None, include_dom: bool = False, include_iocs: bool = False) -> dict:
+    provider = _normalize_provider(get_setting_value(conn, "AI_PROVIDER", ""))
+    endpoint = get_setting_value(conn, "AI_ENDPOINT")
+    api_key = get_setting_value(conn, "AI_KEY")
+    model_override = get_setting_value(conn, "AI_MODEL", "")
 
     final_messages = list(messages)
     if target_id:
@@ -66,14 +206,69 @@ def chat(conn, messages: list[dict], target_id: int | None = None, include_dom: 
         ]
 
     payload = {
-        "model": os.getenv("AI_MODEL", "gpt-4o-mini"),
+        "model": model_override or "gpt-4o-mini",
         "messages": final_messages,
     }
 
     try:
-        resp = requests.post(endpoint.rstrip("/") + "/v1/chat/completions", json=payload, headers=headers, timeout=20)
+        if provider == "gemini":
+            base = endpoint or _default_base(provider)
+            if not base:
+                return {"error": "AI_ENDPOINT non configurato"}
+            if not api_key:
+                return {"error": "AI_KEY mancante"}
+            model = model_override or "gemini-1.5-flash"
+            if ":generateContent" in base:
+                url = base
+            else:
+                url = f"{base.rstrip('/')}/v1beta/models/{model}:generateContent"
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}key={api_key}"
+            payload, _ = _gemini_payload(final_messages)
+            headers = {"Content-Type": "application/json"}
+            resp = requests.post(url, json=payload, headers=headers, timeout=20)
+            data = resp.json()
+            if not resp.ok or data.get("error"):
+                return {"error": _api_error(resp, data)}
+            content = _extract_gemini_content(data)
+            return {"reply": content, "provider": provider}
+
+        if provider == "claude":
+            base = endpoint or _default_base(provider)
+            if not base:
+                return {"error": "AI_ENDPOINT non configurato"}
+            if not api_key:
+                return {"error": "AI_KEY mancante"}
+            if base.rstrip("/").endswith("/v1/messages"):
+                url = base.rstrip("/")
+            else:
+                url = f"{base.rstrip('/')}/v1/messages"
+            payload, _ = _claude_payload(final_messages)
+            payload["model"] = model_override or "claude-3-5-sonnet-20240620"
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            resp = requests.post(url, json=payload, headers=headers, timeout=20)
+            data = resp.json()
+            if not resp.ok or data.get("error"):
+                return {"error": _api_error(resp, data)}
+            content = _extract_claude_content(data)
+            return {"reply": content, "provider": provider}
+
+        base = endpoint or _default_base(provider)
+        openai_endpoint = _openai_endpoint(base)
+        if not openai_endpoint:
+            return {"error": "AI_ENDPOINT non configurato"}
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        resp = requests.post(openai_endpoint, json=payload, headers=headers, timeout=20)
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        if not resp.ok or data.get("error"):
+            return {"error": _api_error(resp, data)}
+        content = _extract_openai_content(data)
         return {"reply": content, "provider": provider or "openai-compatible"}
     except Exception as exc:
         return {"error": str(exc)}
@@ -218,3 +413,129 @@ def _heuristic_suggestions(prompt: str) -> Dict[str, Any]:
             }
         )
     return {"hunts": hunts, "signatures": signatures}
+
+
+TASK_PROMPTS: Dict[str, str] = {
+    "scan_queue_summary": (
+        "You are an OSINT analyst. Summarize the scan queue status, highlight risks, "
+        "and recommend next actions. Keep it short, bullet points allowed."
+    ),
+    "hunt_suggest": (
+        "You are an OSINT analyst. Return JSON only with keys: name, rule_type, rule, "
+        "ttl_seconds, delay_seconds, budget, enabled, rationale. "
+        "rule_type must be one of: fofa, urlscan, dork. No extra keys."
+    ),
+    "urlscan_cluster": (
+        "You are an OSINT analyst. Cluster results by likely campaign/theme and flag outliers. "
+        "Return a short summary and a list of suspicious items with reasons."
+    ),
+    "campaigns_summary": (
+        "You are an OSINT analyst. Summarize the campaign clusters and suggest next pivots "
+        "(e.g., domain, ASN, registrar, hash, IP). Keep it concise."
+    ),
+    "lab_analysis": (
+        "You are an OSINT analyst. Analyze the target context and data; identify phishing traits, "
+        "suggest high-value IOCs, and propose next pivots."
+    ),
+    "signatures_suggest": (
+        "You are an OSINT analyst. Return JSON only with keys: name, pattern, target_field, enabled, rationale. "
+        "target_field must be one of: html, headers, url, asset. No extra keys."
+    ),
+    "yara_suggest": (
+        "You are a YARA expert. Return JSON only with keys: name, target_field, rule_text, rationale. "
+        "target_field must be one of: html, asset. No extra keys."
+    ),
+    "alerts_triage": (
+        "You are an OSINT analyst. Triage the alerts, group by type, and list top-priority items "
+        "with a brief rationale and suggested action."
+    ),
+    "iocs_prioritize": (
+        "You are an OSINT analyst. Deduplicate and prioritize IOCs. Provide the top items with "
+        "reasoning and export suitability."
+    ),
+    "graph_insights": (
+        "You are an OSINT analyst. Summarize the graph clusters, identify bridge nodes, "
+        "and suggest which nodes to expand next."
+    ),
+    "export_helper": (
+        "You are an OSINT analyst. Recommend export filters, format, and TAXII mapping based on "
+        "current IOC filters and goals."
+    ),
+}
+
+
+def _validate_yara_rule(item: Dict[str, Any]) -> Dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    name = item.get("name")
+    target_field = item.get("target_field")
+    rule_text = item.get("rule_text")
+    if set(item.keys()) - {"name", "target_field", "rule_text", "rationale"}:
+        return None
+    if target_field not in {"html", "asset"} or not name or not rule_text:
+        return None
+    return {
+        "name": name,
+        "target_field": target_field,
+        "rule_text": rule_text,
+        "rationale": item.get("rationale", ""),
+    }
+
+
+def run_task(
+    conn,
+    task: str,
+    prompt: str | None = None,
+    data: Dict[str, Any] | None = None,
+    target_id: int | None = None,
+    include_dom: bool = False,
+    include_iocs: bool = False,
+) -> Dict[str, Any]:
+    system = TASK_PROMPTS.get(task)
+    if not system:
+        return {"error": "Unsupported AI task"}
+
+    payload_lines: List[str] = []
+    if prompt:
+        payload_lines.append(f"User prompt: {prompt}")
+    if data:
+        payload_lines.append("Data (JSON):")
+        payload_lines.append(json.dumps(data, ensure_ascii=True))
+    if not payload_lines:
+        payload_lines.append("Provide insights.")
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(payload_lines)},
+    ]
+
+    result = chat(conn, messages, target_id=target_id, include_dom=include_dom, include_iocs=include_iocs)
+    if "error" in result:
+        return result
+    reply = result.get("reply", "")
+    if task == "hunt_suggest":
+        parsed = _safe_json(reply)
+        if not parsed:
+            return {"reply": reply}
+        hunts = _validate_hunts([parsed])
+        if not hunts:
+            return {"reply": reply}
+        return {"reply": parsed.get("rationale", ""), "data": hunts[0]}
+    if task == "signatures_suggest":
+        parsed = _safe_json(reply)
+        if not parsed:
+            return {"reply": reply}
+        sigs = _validate_signatures([parsed])
+        if not sigs:
+            return {"reply": reply}
+        data_out = sigs[0]
+        data_out["rationale"] = parsed.get("rationale", "")
+        return {"reply": parsed.get("rationale", ""), "data": data_out}
+    if task == "yara_suggest":
+        parsed = _safe_json(reply)
+        if not parsed:
+            return {"reply": reply}
+        validated = _validate_yara_rule(parsed)
+        if not validated:
+            return {"reply": reply}
+        return {"reply": validated.get("rationale", ""), "data": validated}
+    return {"reply": reply}

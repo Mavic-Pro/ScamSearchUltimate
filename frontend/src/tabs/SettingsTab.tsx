@@ -8,13 +8,104 @@ const KEYS = [
   "FOFA_KEY",
   "SERPAPI_KEY",
   "URLSCAN_KEY",
+  "AI_PROVIDER",
   "AI_ENDPOINT",
   "AI_KEY",
+  "AI_MODEL",
   "REMOTE_FAVICON_ENABLED",
   "TAXII_URL",
   "TAXII_COLLECTION",
   "TAXII_API_KEY"
 ];
+
+const AI_PROVIDERS = [
+  { value: "openai", label: "OpenAI", endpoint: "https://api.openai.com" },
+  { value: "gemini", label: "Gemini", endpoint: "https://generativelanguage.googleapis.com" },
+  { value: "nexos", label: "Nexos.AI", endpoint: "https://api.nexos.ai" },
+  { value: "claude", label: "Claude (Anthropic)", endpoint: "https://api.anthropic.com" },
+  { value: "ollama", label: "Ollama (local)", endpoint: "http://localhost:11434" },
+  { value: "custom", label: "Custom", endpoint: "" }
+];
+
+const AI_TASKS = [
+  { value: "scan_queue_summary", label: "Scan queue summary" },
+  { value: "hunt_suggest", label: "Hunt suggest" },
+  { value: "urlscan_cluster", label: "Urlscan cluster" },
+  { value: "campaigns_summary", label: "Campaigns summary" },
+  { value: "lab_analysis", label: "Lab analysis" },
+  { value: "signatures_suggest", label: "Signatures suggest" },
+  { value: "yara_suggest", label: "YARA suggest" },
+  { value: "alerts_triage", label: "Alerts triage" },
+  { value: "iocs_prioritize", label: "IOCs prioritize" },
+  { value: "graph_insights", label: "Graph insights" },
+  { value: "export_helper", label: "Export helper" }
+];
+
+const getTaskDefaults = (task: string) => {
+  switch (task) {
+    case "hunt_suggest":
+      return { prompt: "bank login phishing", data: null };
+    case "signatures_suggest":
+      return { prompt: "detect fake Microsoft login", data: null };
+    case "yara_suggest":
+      return { prompt: "detect wallet drainer scripts", data: null };
+    case "urlscan_cluster":
+      return { prompt: null, data: { local: [], remote: [], stats: { dom: {}, headers: {} } } };
+    case "campaigns_summary":
+      return { prompt: null, data: { campaigns: [] } };
+    case "lab_analysis":
+      return {
+        prompt: "highlight phishing indicators",
+        data: { target: { url: "https://example.com" }, indicators: [], assets: [], matches: [], yara: [] }
+      };
+    case "alerts_triage":
+      return { prompt: null, data: { alerts: [] } };
+    case "iocs_prioritize":
+      return { prompt: null, data: { iocs: [] } };
+    case "graph_insights":
+      return { prompt: null, data: { nodes: [], edges: [], selected: null } };
+    case "export_helper":
+      return {
+        prompt: "best format for sharing",
+        data: {
+          kind: null,
+          value: null,
+          domain: null,
+          url: null,
+          source: null,
+          target_id: null,
+          date_from: null,
+          date_to: null,
+          format: "csv"
+        }
+      };
+    case "scan_queue_summary":
+    default:
+      return { prompt: null, data: { jobs: [] } };
+  }
+};
+
+const getDefaultEndpoint = (provider: string) =>
+  AI_PROVIDERS.find((item) => item.value === provider)?.endpoint || "";
+
+const inferProvider = (endpoint: string) => {
+  const normalized = endpoint.toLowerCase();
+  if (normalized.includes("anthropic.com")) return "claude";
+  if (normalized.includes("generativelanguage.googleapis.com")) return "gemini";
+  if (normalized.includes("nexos.ai")) return "nexos";
+  if (normalized.includes("localhost:11434") || normalized.includes("127.0.0.1:11434")) return "ollama";
+  if (normalized.includes("openai.com")) return "openai";
+  return "custom";
+};
+
+const getEndpointWarning = (endpoint: string) => {
+  const normalized = endpoint.toLowerCase().trim();
+  if (!normalized) return "";
+  if (normalized.includes("/models") || normalized.includes("/chat/completions")) {
+    return "full_path";
+  }
+  return "";
+};
 
 export default function SettingsTab() {
   const lang = getLang();
@@ -25,6 +116,9 @@ export default function SettingsTab() {
   const [keyStatus, setKeyStatus] = React.useState<string>("unknown");
   const [showKeyModal, setShowKeyModal] = React.useState(false);
   const [generatedKey, setGeneratedKey] = React.useState<string>("");
+  const [aiTestStatus, setAiTestStatus] = React.useState<string | null>(null);
+  const [aiTaskTestStatus, setAiTaskTestStatus] = React.useState<string | null>(null);
+  const [aiTaskName, setAiTaskName] = React.useState("scan_queue_summary");
 
   const load = async () => {
     const next: Record<string, string> = {};
@@ -34,6 +128,13 @@ export default function SettingsTab() {
         next[key] = res.data.value || (key === "REMOTE_FAVICON_ENABLED" ? "0" : "");
       } else {
         setError(res.error);
+      }
+    }
+    if (!next.AI_PROVIDER) {
+      const inferred = inferProvider(next.AI_ENDPOINT || "");
+      next.AI_PROVIDER = inferred;
+      if (!next.AI_ENDPOINT && inferred !== "custom") {
+        next.AI_ENDPOINT = getDefaultEndpoint(inferred);
       }
     }
     setValues(next);
@@ -58,6 +159,23 @@ export default function SettingsTab() {
       }
     }
     setStatus(tr("Saved", "Salvato", lang));
+  };
+
+  const handleProviderChange = (provider: string) => {
+    setValues((prev) => {
+      const prevProvider = prev.AI_PROVIDER || "custom";
+      const prevDefault = getDefaultEndpoint(prevProvider);
+      const nextDefault = getDefaultEndpoint(provider);
+      const next: Record<string, string> = { ...prev, AI_PROVIDER: provider };
+      const usingDefault = !prev.AI_ENDPOINT || prev.AI_ENDPOINT === prevDefault;
+      if (usingDefault) {
+        next.AI_ENDPOINT = nextDefault;
+      }
+      if (provider === "custom" && prev.AI_ENDPOINT === prevDefault) {
+        next.AI_ENDPOINT = "";
+      }
+      return next;
+    });
   };
 
   const generateKey = async () => {
@@ -96,6 +214,33 @@ export default function SettingsTab() {
       setStatus(tr("Database reset completed.", "Reset database completato.", lang));
     } else {
       setStatus(tr(`Reset failed: ${res.error}`, `Reset fallito: ${res.error}`, lang));
+    }
+  };
+
+  const testAi = async () => {
+    setAiTestStatus(tr("Testing AI endpoint...", "Test endpoint AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/chat", {
+      messages: [{ role: "user", content: "ping" }]
+    });
+    if (res.ok) {
+      setAiTestStatus(tr("AI OK.", "AI OK.", lang));
+    } else {
+      setAiTestStatus(tr(`AI error: ${res.error}`, `Errore AI: ${res.error}`, lang));
+    }
+  };
+
+  const testAiTask = async () => {
+    setAiTaskTestStatus(tr("Testing AI tasks...", "Test task AI in corso...", lang));
+    const defaults = getTaskDefaults(aiTaskName);
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: aiTaskName,
+      prompt: defaults.prompt,
+      data: defaults.data
+    });
+    if (res.ok) {
+      setAiTaskTestStatus(tr("AI task OK.", "Task AI OK.", lang));
+    } else {
+      setAiTaskTestStatus(tr(`AI task error: ${res.error}`, `Errore task AI: ${res.error}`, lang));
     }
   };
 
@@ -153,7 +298,60 @@ export default function SettingsTab() {
           {status && <span className="status">{status}</span>}
         </div>
         <div className="form-grid">
-          {KEYS.map((key) => (
+          <label>
+            {tr("AI Provider", "Provider AI", lang)}
+            <select value={values.AI_PROVIDER || "custom"} onChange={(e) => handleProviderChange(e.target.value)}>
+              {AI_PROVIDERS.map((provider) => (
+                <option key={provider.value} value={provider.value}>
+                  {provider.label}
+                </option>
+              ))}
+            </select>
+            <div className="muted">
+              {tr("Pick a provider or leave Custom to set your own endpoint.", "Seleziona un provider o lascia Custom per usare un endpoint personalizzato.", lang)}
+            </div>
+          </label>
+          <label>
+            {tr("AI Endpoint (base URL)", "AI Endpoint (base URL)", lang)}
+            <input
+              value={values.AI_ENDPOINT || ""}
+              placeholder={getDefaultEndpoint(values.AI_PROVIDER || "custom") || "https://..."}
+              onChange={(e) => setValues({ ...values, AI_ENDPOINT: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Leave blank to use the default endpoint for the selected provider.", "Lascia vuoto per usare l'endpoint predefinito del provider selezionato.", lang)}
+            </div>
+            {getEndpointWarning(values.AI_ENDPOINT || "") === "full_path" && (
+              <div className="muted">
+                {tr(
+                  "Warning: use the base URL only (e.g. https://api.openai.com or /v1). Do not include /models or /chat/completions.",
+                  "Attenzione: usa solo la base URL (es. https://api.openai.com o /v1). Non includere /models o /chat/completions.",
+                  lang
+                )}
+              </div>
+            )}
+          </label>
+          <label>
+            AI_KEY
+            <input
+              value={values.AI_KEY || ""}
+              onChange={(e) => setValues({ ...values, AI_KEY: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Gemini/Claude require a key. Ollama typically does not.", "Gemini/Claude richiedono una chiave. Ollama di solito no.", lang)}
+            </div>
+          </label>
+          <label>
+            AI_MODEL
+            <input
+              value={values.AI_MODEL || ""}
+              onChange={(e) => setValues({ ...values, AI_MODEL: e.target.value })}
+            />
+            <div className="muted">
+              {tr("Optional. Leave blank to use provider defaults.", "Opzionale. Lascia vuoto per usare i default del provider.", lang)}
+            </div>
+          </label>
+          {KEYS.filter((key) => !["AI_PROVIDER", "AI_ENDPOINT", "AI_KEY", "AI_MODEL"].includes(key)).map((key) => (
             <label key={key}>
               {key}
               {key === "REMOTE_FAVICON_ENABLED" ? (
@@ -177,7 +375,21 @@ export default function SettingsTab() {
             </label>
           ))}
           <button onClick={save}>{tr("Save", "Salva", lang)}</button>
+          <button onClick={testAi} className="secondary">{tr("Test AI", "Test AI", lang)}</button>
+          <label>
+            {tr("Task", "Task", lang)}
+            <select value={aiTaskName} onChange={(e) => setAiTaskName(e.target.value)}>
+              {AI_TASKS.map((task) => (
+                <option key={task.value} value={task.value}>
+                  {task.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button onClick={testAiTask} className="secondary">{tr("Test AI Tasks", "Test Task AI", lang)}</button>
           {status && <span className="status">{status}</span>}
+          {aiTestStatus && <span className="status">{aiTestStatus}</span>}
+          {aiTaskTestStatus && <span className="status">{aiTaskTestStatus}</span>}
         </div>
       </div>
       {showFaviconConfirm && (

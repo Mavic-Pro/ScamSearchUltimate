@@ -49,6 +49,12 @@ export default function LabTab() {
   const [fofaStatus, setFofaStatus] = React.useState<string | null>(null);
   const [showWhoisRaw, setShowWhoisRaw] = React.useState(false);
   const [actionStatus, setActionStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
+  const [aiIncludeDom, setAiIncludeDom] = React.useState(false);
+  const [aiIncludeIocs, setAiIncludeIocs] = React.useState(true);
+  const [showRedirects, setShowRedirects] = React.useState(false);
 
   const load = async () => {
     if (!targetId) return;
@@ -264,6 +270,45 @@ export default function LabTab() {
     }
   };
 
+  const runAi = async () => {
+    if (!data) return;
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "lab_analysis",
+      prompt: aiPrompt || null,
+      data: {
+        target: data.target,
+        indicators: (data.indicators || []).slice(0, 50),
+        assets: (data.assets || []).slice(0, 50),
+        matches: (data.matches || []).slice(0, 50),
+        yara: (data.yara || []).slice(0, 50)
+      },
+      target_id: targetId ? Number(targetId) : null,
+      include_dom: aiIncludeDom,
+      include_iocs: aiIncludeIocs
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
+  };
+
+  const parseChain = (raw: any) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        return [];
+      }
+    }
+    return [];
+  };
+
   const rescanJob = async (job: Job) => {
     const url = job.payload?.url;
     if (!url) return;
@@ -445,6 +490,30 @@ export default function LabTab() {
             <div><strong>JARM:</strong> {data.target?.jarm || "-"}</div>
             <div><strong>{tr("Favicon", "Favicon", lang)}:</strong> {data.target?.favicon_hash || "-"}</div>
           </div>
+          {(() => {
+            const chain = parseChain((data.target as any)?.redirect_chain);
+            const chainCount = chain.length;
+            if (chainCount === 0) return null;
+            return (
+              <div className="panel" style={{ marginTop: "12px" }}>
+                <div className="row-actions">
+                  <button className="secondary" onClick={() => setShowRedirects(!showRedirects)}>
+                    {showRedirects ? tr("Hide Redirects", "Nascondi Redirects", lang) : tr("Show Redirects", "Mostra Redirects", lang)} ({chainCount})
+                  </button>
+                </div>
+                {showRedirects && (
+                  <div className="muted">
+                    {chain.map((step: any, idx: number) => (
+                      <div key={`redir-${idx}`}>
+                        {step.status ? `${step.status} ` : ""}{step.url}
+                        {step.location ? ` -> ${step.location}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="row-actions" style={{ marginBottom: "12px" }}>
             {data.target?.url && (
               <button onClick={rescanTarget} className="secondary" title={tr("Queue a new scan for this target URL", "Metti in coda una nuova scansione per questo target", lang)}>
@@ -841,8 +910,25 @@ export default function LabTab() {
               {data.matches.map((m) => (
                 <div key={String(m.id)} className="row simple-row">
                   <span>#{m.id}</span>
-                  <span>{m.signature_id}</span>
-                  <span className="hash-value">{m.created_at || "-"}</span>
+                  <span className="truncate">{m.name || m.signature_id}</span>
+                  <span>{m.target_field || "-"}</span>
+                  <span className="hash-value truncate">{m.pattern || "-"}</span>
+                  <div className="row-actions">
+                    {m.pattern && (
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent("open-signatures", {
+                              detail: { pattern: m.pattern, targetField: m.target_field || "html" }
+                            })
+                          )
+                        }
+                      >
+                        {tr("Pivot", "Pivot", lang)}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -869,6 +955,26 @@ export default function LabTab() {
           {showRaw && <pre>{JSON.stringify(data, null, 2)}</pre>}
         </div>
       )}
+      <div className="panel">
+        <h3>{tr("AI Analysis", "Analisi AI", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. highlight phishing indicators", "Es: evidenzia indicatori di phishing", lang)} />
+          </label>
+          <label>
+            {tr("Include full DOM", "Include DOM completo", lang)}
+            <input type="checkbox" checked={aiIncludeDom} onChange={(e) => setAiIncludeDom(e.target.checked)} />
+          </label>
+          <label>
+            {tr("Include saved IOCs", "Include IOC salvati", lang)}
+            <input type="checkbox" checked={aiIncludeIocs} onChange={(e) => setAiIncludeIocs(e.target.checked)} />
+          </label>
+          <button onClick={runAi} className="secondary" disabled={!data}>{tr("Analyze Target", "Analizza target", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
+      </div>
     </div>
   );
 }

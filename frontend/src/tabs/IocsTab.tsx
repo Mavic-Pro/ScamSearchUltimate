@@ -30,6 +30,9 @@ export default function IocsTab() {
   const [format, setFormat] = React.useState("csv");
   const [targetId, setTargetId] = React.useState("");
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     setStatus(tr("Loading IOCs...", "Caricamento IOC...", lang));
@@ -88,6 +91,21 @@ export default function IocsTab() {
       String(ioc.url || "").toLowerCase().includes(q)
     );
   });
+
+  const runAi = async () => {
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "iocs_prioritize",
+      prompt: aiPrompt || null,
+      data: { iocs: filtered.slice(0, 100) }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
+  };
 
   return (
     <div className="tab">
@@ -179,6 +197,18 @@ export default function IocsTab() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Prioritization", "Prioritizzazione AI", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. pick top export candidates", "Es: scegli i migliori per export", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary">{tr("Analyze IOCs", "Analizza IOC", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

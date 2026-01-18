@@ -19,6 +19,9 @@ export default function YaraTab() {
   const [targetField, setTargetField] = React.useState("html");
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<YaraRule[]>("/api/yara");
@@ -48,6 +51,25 @@ export default function YaraTab() {
       load();
     } else {
       setError(res.error);
+    }
+  };
+
+  const runAiSuggest = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiStatus(tr("AI suggestion running...", "Suggerimento AI in corso...", lang));
+    const res = await safePost<{ reply?: string; data?: Partial<YaraRule> & { rule_text?: string } }>("/api/ai/task", {
+      task: "yara_suggest",
+      prompt: aiPrompt
+    });
+    if (res.ok) {
+      const suggestion = res.data.data;
+      if (suggestion?.name) setName(String(suggestion.name));
+      if (suggestion?.target_field) setTargetField(String(suggestion.target_field));
+      if (suggestion?.rule_text) setRuleText(String(suggestion.rule_text));
+      setAiReply(res.data.reply || null);
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
     }
   };
 
@@ -90,6 +112,18 @@ export default function YaraTab() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Assistant", "Assistente AI", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Describe rule", "Descrivi la regola", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. detect wallet drainer scripts", "Es: rileva script wallet drainer", lang)} />
+          </label>
+          <button onClick={runAiSuggest} className="secondary">{tr("Suggest YARA", "Suggerisci YARA", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

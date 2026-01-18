@@ -1,4 +1,4 @@
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TABLES = {
     "schema_version": {
@@ -36,6 +36,7 @@ TABLES = {
         "status": "text NOT NULL",
         "reason": "text",
         "risk_score": "int NOT NULL DEFAULT 0",
+        "redirect_chain": "text",
         "dom_hash": "text",
         "headers_hash": "text",
         "headers_text": "text",
@@ -94,6 +95,7 @@ TABLES = {
         "delay_seconds": "int NOT NULL",
         "budget": "int NOT NULL",
         "enabled": "boolean NOT NULL DEFAULT true",
+        "last_run_at": "timestamptz",
         "created_at": "timestamptz NOT NULL",
     },
     "alerts": {
@@ -161,6 +163,7 @@ TABLES = {
         "title": "text",
         "status": "text NOT NULL",
         "content_type": "text",
+        "redirect_chain": "text",
         "dom_hash": "text",
         "headers_hash": "text",
         "favicon_hash": "text",

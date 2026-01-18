@@ -23,6 +23,9 @@ export default function CampaignsTab() {
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<Campaign[]>("/api/campaigns");
@@ -55,6 +58,21 @@ export default function CampaignsTab() {
   React.useEffect(() => {
     load();
   }, []);
+
+  const runAi = async () => {
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "campaigns_summary",
+      prompt: aiPrompt || null,
+      data: { campaigns }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
+  };
 
   return (
     <div className="tab">
@@ -110,6 +128,18 @@ export default function CampaignsTab() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Insights", "AI Insights", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. suggest next pivots", "Es: suggerisci prossimi pivot", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary">{tr("Analyze Campaigns", "Analizza campagne", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Dict, List
@@ -6,6 +7,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
+from backend.src.core.ai import ai_configured, verify_signature_match
 from backend.src.core.extractors.indicators import extract_indicators
 from backend.src.core.settings import get_setting_value
 from backend.src.db.dao.assets import insert_asset
@@ -59,7 +61,13 @@ def scan_url(conn, url: str) -> Dict[str, object]:
     fetch = safe_fetch_html(url)
     if not fetch.ok:
         _capture_screenshot(conn, target_id, url)
-        update_target(conn, target_id, status=fetch.status, reason=fetch.reason)
+        update_target(
+            conn,
+            target_id,
+            status=fetch.status,
+            reason=fetch.reason,
+            redirect_chain=json.dumps(fetch.redirect_chain, ensure_ascii=True) if fetch.redirect_chain else None,
+        )
         return {"id": target_id, "status": fetch.status, "reason": fetch.reason}
 
     html = fetch.content.decode("utf-8", errors="ignore")
@@ -77,6 +85,7 @@ def scan_url(conn, url: str) -> Dict[str, object]:
         conn,
         target_id,
         status="DONE",
+        redirect_chain=json.dumps(fetch.redirect_chain, ensure_ascii=True) if fetch.redirect_chain else None,
         dom_hash=dom_hash,
         headers_hash=headers_hash,
         headers_text=header_text,
@@ -97,6 +106,7 @@ def scan_url(conn, url: str) -> Dict[str, object]:
         title,
         "DONE",
         fetch.headers.get("Content-Type"),
+        json.dumps(fetch.redirect_chain, ensure_ascii=True) if fetch.redirect_chain else None,
         dom_hash,
         headers_hash,
         favicon_hash,
@@ -190,8 +200,22 @@ def _apply_signatures(conn, target_id: int, html: str, headers: Dict[str, str], 
             haystack = header_text
         elif target_field == "url":
             haystack = url
-        if haystack and _regex_match(pattern, haystack):
-            insert_match(conn, target_id, sig["id"])
+        if not haystack:
+            continue
+        matched, snippet = _regex_search(pattern, haystack)
+        if not matched:
+            continue
+        if _should_verify_signature(sig.get("name", "")) and ai_configured(conn):
+            verified, _reason = verify_signature_match(
+                conn,
+                sig.get("name", "signature"),
+                target_field,
+                pattern,
+                snippet or "",
+            )
+            if verified is False:
+                continue
+        insert_match(conn, target_id, sig["id"])
 
 
 def _apply_asset_signatures(conn, target_id: int, content: bytes, signatures: List[dict]) -> None:
@@ -199,17 +223,40 @@ def _apply_asset_signatures(conn, target_id: int, content: bytes, signatures: Li
     for sig in signatures:
         if not sig["enabled"] or sig["target_field"] != "asset":
             continue
-        if _regex_match(sig["pattern"], text):
-            insert_match(conn, target_id, sig["id"])
+        matched, snippet = _regex_search(sig["pattern"], text)
+        if not matched:
+            continue
+        if _should_verify_signature(sig.get("name", "")) and ai_configured(conn):
+            verified, _reason = verify_signature_match(
+                conn,
+                sig.get("name", "signature"),
+                "asset",
+                sig["pattern"],
+                snippet or "",
+            )
+            if verified is False:
+                continue
+        insert_match(conn, target_id, sig["id"])
 
-
-def _regex_match(pattern: str, text: str) -> bool:
+def _regex_search(pattern: str, text: str) -> tuple[bool, str | None]:
     try:
         import re
 
-        return re.search(pattern, text, re.IGNORECASE) is not None
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return False, None
+        start = max(match.start() - 120, 0)
+        end = min(match.end() + 120, len(text))
+        return True, text[start:end]
     except Exception:
+        return False, None
+
+
+def _should_verify_signature(name: str) -> bool:
+    if not name:
         return False
+    lowered = name.lower()
+    return "private key" in lowered or "pgp" in lowered or "address" in lowered or "wallet" in lowered
 
 
 def _apply_yara_html(conn, target_id: int, html: str, yara_rules: List[dict]) -> None:

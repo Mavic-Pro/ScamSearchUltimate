@@ -26,9 +26,15 @@ export default function HuntTab() {
   const [name, setName] = React.useState("");
   const [ruleType, setRuleType] = React.useState("fofa");
   const [rule, setRule] = React.useState("");
+  const [delaySeconds, setDelaySeconds] = React.useState(60);
+  const [budget, setBudget] = React.useState(50);
+  const [enabled, setEnabled] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
   const [rowStatus, setRowStatus] = React.useState<Record<number, string>>({});
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const loadHunts = async () => {
     const res = await safeGet<Hunt[]>("/api/hunt");
@@ -48,7 +54,10 @@ export default function HuntTab() {
     const res = await safePost<{ id: number }>("/api/hunt", {
       name,
       rule_type: ruleType,
-      rule
+      rule,
+      delay_seconds: delaySeconds,
+      budget,
+      enabled
     });
     if (res.ok) {
       setName("");
@@ -64,7 +73,10 @@ export default function HuntTab() {
     const res = await safePost<HuntRunResponse>("/api/hunt/run", {
       name,
       rule_type: ruleType,
-      rule
+      rule,
+      delay_seconds: delaySeconds,
+      budget,
+      enabled
     });
     if (res.ok) {
       const queued = res.data.queued?.length ?? 0;
@@ -113,7 +125,33 @@ export default function HuntTab() {
     setName(hunt.name);
     setRuleType(hunt.rule_type);
     setRule(hunt.rule);
+    setDelaySeconds(hunt.delay_seconds ?? 60);
+    setBudget(hunt.budget ?? 50);
+    setEnabled(Boolean(hunt.enabled));
     setStatus(tr("Rule loaded into fields.", "Regola caricata nei campi.", lang));
+  };
+
+  const runAiSuggest = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiStatus(tr("AI suggestion running...", "Suggerimento AI in corso...", lang));
+    const res = await safePost<{ reply?: string; data?: Partial<Hunt> }>("/api/ai/task", {
+      task: "hunt_suggest",
+      prompt: aiPrompt
+    });
+    if (res.ok) {
+      const suggestion = res.data.data;
+      if (suggestion?.name) setName(String(suggestion.name));
+      if (suggestion?.rule_type) setRuleType(String(suggestion.rule_type));
+      if (suggestion?.rule) setRule(String(suggestion.rule));
+      if (suggestion?.delay_seconds) setDelaySeconds(Number(suggestion.delay_seconds));
+      if (suggestion?.budget) setBudget(Number(suggestion.budget));
+      if (suggestion?.enabled !== undefined) setEnabled(Boolean(suggestion.enabled));
+      if (suggestion?.ttl_seconds) setStatus(`${tr("TTL:", "TTL:", lang)} ${suggestion.ttl_seconds}`);
+      setAiReply(res.data.reply || null);
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
   };
 
   return (
@@ -141,6 +179,28 @@ export default function HuntTab() {
             {tr("Rule", "Regola", lang)}
             <input value={rule} onChange={(e) => setRule(e.target.value)} />
           </label>
+          <label>
+            {tr("Auto-run interval (sec)", "Intervallo auto-run (sec)", lang)}
+            <input
+              type="number"
+              min={10}
+              value={delaySeconds}
+              onChange={(e) => setDelaySeconds(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            {tr("Budget (max URLs)", "Budget (max URL)", lang)}
+            <input
+              type="number"
+              min={1}
+              value={budget}
+              onChange={(e) => setBudget(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            {tr("Enabled", "Abilitato", lang)}
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          </label>
           <button onClick={handleCreate}>{tr("Save Rule", "Salva Regola", lang)}</button>
           <button onClick={handleRun} className="secondary">{tr("Run Hunt", "Avvia Hunt", lang)}</button>
           {status && <span className="status">{status}</span>}
@@ -163,6 +223,18 @@ export default function HuntTab() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Assistant", "Assistente AI", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Goal", "Obiettivo", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. bank login phishing", "Es: phishing login bancario", lang)} />
+          </label>
+          <button onClick={runAiSuggest} className="secondary">{tr("Suggest Rule", "Suggerisci regola", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

@@ -76,6 +76,18 @@ def delete_jobs_by_url(conn, url: str):
         conn.commit()
 
 
+def filter_new_job_urls(conn, urls: list[str]) -> list[str]:
+    if not urls:
+        return []
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT payload->>'url' as url FROM jobs WHERE payload->>'url' = ANY(%s) AND status IN ('QUEUED', 'RUNNING')",
+            (urls,),
+        )
+        existing = {row["url"] for row in (cur.fetchall() or [])}
+    return [url for url in urls if url not in existing]
+
+
 def requeue_stuck(conn):
     with conn.cursor() as cur:
         cur.execute(

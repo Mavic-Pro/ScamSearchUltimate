@@ -22,3 +22,15 @@ def get_hunt(conn, hunt_id: int):
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM hunts WHERE id=%s", (hunt_id,))
         return cur.fetchone()
+
+
+def list_enabled_hunts(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM hunts WHERE enabled=true ORDER BY id ASC")
+        return cur.fetchall() or []
+
+
+def update_hunt_last_run(conn, hunt_id: int):
+    with conn.cursor() as cur:
+        cur.execute("UPDATE hunts SET last_run_at=%s WHERE id=%s", (utcnow(), hunt_id))
+        conn.commit()

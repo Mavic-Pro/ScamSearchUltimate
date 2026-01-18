@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from backend.src.db.connection import connect, load_db_config
+from backend.src.db.dao.signatures import ensure_default_signatures
 from backend.src.db.schema.definitions import SCHEMA_VERSION, TABLES, INDEXES, VIEWS
 from backend.src.utils.time import utcnow
 
@@ -61,6 +62,7 @@ def validate_and_migrate(conn) -> ValidationReport:
             _upsert_schema_version(cur, report)
 
         conn.commit()
+        ensure_default_signatures(conn)
     return report
 
 

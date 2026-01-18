@@ -22,6 +22,9 @@ export default function SignaturesTab() {
   const [searchField, setSearchField] = React.useState("html");
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<Signature[]>("/api/signatures");
@@ -56,11 +59,11 @@ export default function SignaturesTab() {
     }
   };
 
-  const handleSearch = async () => {
+  const runSearch = async (patternValue: string, fieldValue: string) => {
     setStatus(tr("Searching signatures...", "Ricerca firme...", lang));
     const res = await safePost<{ results: any[] }>("/api/signatures/search", {
-      pattern: searchPattern,
-      target_field: searchField
+      pattern: patternValue,
+      target_field: fieldValue
     });
     if (res.ok) {
       setSearchResults(res.data.results || []);
@@ -68,6 +71,44 @@ export default function SignaturesTab() {
     } else {
       setError(res.error);
       setStatus(res.error);
+    }
+  };
+
+  const handleSearch = async () => {
+    await runSearch(searchPattern, searchField);
+  };
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const pattern = detail.pattern ? String(detail.pattern) : "";
+      const target = detail.targetField ? String(detail.targetField) : "html";
+      if (!pattern) return;
+      setSearchPattern(pattern);
+      setSearchField(target);
+      runSearch(pattern, target);
+    };
+    window.addEventListener("open-signatures", handler);
+    return () => window.removeEventListener("open-signatures", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runAiSuggest = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiStatus(tr("AI suggestion running...", "Suggerimento AI in corso...", lang));
+    const res = await safePost<{ reply?: string; data?: Partial<Signature> }>("/api/ai/task", {
+      task: "signatures_suggest",
+      prompt: aiPrompt
+    });
+    if (res.ok) {
+      const suggestion = res.data.data;
+      if (suggestion?.name) setName(String(suggestion.name));
+      if (suggestion?.pattern) setPattern(String(suggestion.pattern));
+      if (suggestion?.target_field) setTargetField(String(suggestion.target_field));
+      setAiReply(res.data.reply || null);
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
     }
   };
 
@@ -156,6 +197,18 @@ export default function SignaturesTab() {
             ))}
           </div>
         )}
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Assistant", "Assistente AI", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Describe signature", "Descrivi la firma", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. detect fake Microsoft login", "Es: rileva falso login Microsoft", lang)} />
+          </label>
+          <button onClick={runAiSuggest} className="secondary">{tr("Suggest Signature", "Suggerisci firma", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

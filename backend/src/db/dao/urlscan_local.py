@@ -10,6 +10,7 @@ def insert_local(
     title: str | None,
     status: str,
     content_type: str | None,
+    redirect_chain: str | None,
     dom_hash: str | None,
     headers_hash: str | None,
     favicon_hash: str | None,
@@ -17,8 +18,22 @@ def insert_local(
 ):
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO urlscan_local (target_id, url, domain, ip, title, status, content_type, dom_hash, headers_hash, favicon_hash, jarm, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (target_id, url, domain, ip, title, status, content_type, dom_hash, headers_hash, favicon_hash, jarm, utcnow()),
+            "INSERT INTO urlscan_local (target_id, url, domain, ip, title, status, content_type, redirect_chain, dom_hash, headers_hash, favicon_hash, jarm, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                target_id,
+                url,
+                domain,
+                ip,
+                title,
+                status,
+                content_type,
+                redirect_chain,
+                dom_hash,
+                headers_hash,
+                favicon_hash,
+                jarm,
+                utcnow(),
+            ),
         )
         conn.commit()
 

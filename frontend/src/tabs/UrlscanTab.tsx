@@ -1,7 +1,7 @@
 import React from "react";
 import ErrorBanner from "../components/ErrorBanner";
 import { getLang, tr } from "../i18n";
-import { safePost } from "../utils/api";
+import { safeGet, safePost } from "../utils/api";
 
 interface UrlscanResponse {
   local: Array<Record<string, string | number>>;
@@ -26,10 +26,29 @@ export default function UrlscanTab() {
     dom: Record<string, { count: number; sample_domain?: string; sample_url?: string }>;
     headers: Record<string, { count: number; sample_domain?: string; sample_url?: string }>;
   } | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
   const [history, setHistory] = React.useState<string[]>(() => {
     const raw = localStorage.getItem("urlscan_history");
     return raw ? JSON.parse(raw) : [];
   });
+  const [openLocalRedirects, setOpenLocalRedirects] = React.useState<number | null>(null);
+  const [remoteRedirects, setRemoteRedirects] = React.useState<Record<string, { chain?: any[]; error?: string; loading?: boolean }>>({});
+
+  const parseChain = (raw: any) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        return [];
+      }
+    }
+    return [];
+  };
 
   const run = async () => {
     setStatus(tr("Searching...", "Ricerca in corso...", lang));
@@ -156,6 +175,37 @@ export default function UrlscanTab() {
     }
   };
 
+  const loadRemoteRedirects = async (url: string) => {
+    setRemoteRedirects((prev) => ({ ...prev, [url]: { loading: true } }));
+    const res = await safeGet<{ chain?: any[] }>(`/api/urlscan/redirects/remote?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      setRemoteRedirects((prev) => ({ ...prev, [url]: { chain: res.data.chain || [], loading: false } }));
+    } else {
+      setRemoteRedirects((prev) => ({ ...prev, [url]: { error: res.error, loading: false } }));
+    }
+  };
+
+  const runAi = async () => {
+    if (!data) return;
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const sampleLocal = (data.local || []).slice(0, 50);
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "urlscan_cluster",
+      prompt: aiPrompt || null,
+      data: {
+        local: sampleLocal,
+        remote: data.remote?.slice(0, 50) || [],
+        stats
+      }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
+  };
+
   return (
     <div className="tab">
       <div className="tab-header">
@@ -222,6 +272,33 @@ export default function UrlscanTab() {
                 <div className="card-title">{row.domain}</div>
                 <div className="card-sub">{row.title || "-"}</div>
                 <div className="card-url">{row.url}</div>
+                {(() => {
+                  const chain = parseChain((row as any).redirect_chain);
+                  const chainCount = chain.length;
+                  const isOpen = openLocalRedirects === row.id;
+                  return (
+                    <>
+                      <div className="row-actions">
+                        <button
+                          className="secondary"
+                          onClick={() => setOpenLocalRedirects(isOpen ? null : Number(row.id))}
+                        >
+                          {tr("Redirects", "Redirects", lang)} ({chainCount})
+                        </button>
+                      </div>
+                      {isOpen && chainCount > 0 && (
+                        <div className="muted">
+                          {chain.map((step: any, stepIdx: number) => (
+                            <div key={`${row.id}-r-${stepIdx}`}>
+                              {step.status ? `${step.status} ` : ""}{step.url}
+                              {step.location ? ` -> ${step.location}` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 <div className="row-actions">
                   <button onClick={() => queueScan(String(row.url))} className="secondary">{tr("Scan", "Scan", lang)}</button>
                   {row.target_id && (
@@ -317,20 +394,56 @@ export default function UrlscanTab() {
           )}
           <h3>{tr("Urlscan Results", "Risultati Urlscan", lang)}</h3>
           <div className="table">
-            {data.remote.map((url) => (
-              <div key={url} className="row">
-                <span>{tr("remote", "remote", lang)}</span>
-                <span>-</span>
-                <span>-</span>
-                <span>{url}</span>
-                <div className="row-actions">
-                  <button onClick={() => queueScan(url)} className="secondary">{tr("Scan", "Scan", lang)}</button>
+            {data.remote.map((url) => {
+              const entry = remoteRedirects[url] || {};
+              return (
+                <div key={url} className="row">
+                  <span>{tr("remote", "remote", lang)}</span>
+                  <span>-</span>
+                  <span className="truncate">{url}</span>
+                  <div className="row-actions">
+                    <button onClick={() => queueScan(url)} className="secondary">{tr("Scan", "Scan", lang)}</button>
+                    <button
+                      onClick={() => loadRemoteRedirects(url)}
+                      className="secondary"
+                      disabled={entry.loading}
+                    >
+                      {entry.loading ? tr("Loading...", "Caricamento...", lang) : tr("Redirects", "Redirects", lang)}
+                    </button>
+                  </div>
+                  {entry.error && <span className="status">{entry.error}</span>}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {Object.entries(remoteRedirects).map(([remoteUrl, entry]) => {
+            if (!entry.chain || entry.chain.length === 0) return null;
+            return (
+              <div key={`${remoteUrl}-chain`} className="muted">
+                <strong>{remoteUrl}</strong>
+                {entry.chain.map((step: any, idx: number) => (
+                  <div key={`${remoteUrl}-${idx}`}>
+                    {step.status ? `${step.status} ` : ""}{step.url}
+                    {step.location ? ` -> ${step.location}` : ""}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
+      <div className="panel">
+        <h3>{tr("AI Insights", "AI Insights", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. highlight suspicious outliers", "Es: evidenzia outlier sospetti", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary" disabled={!data}>{tr("Analyze Results", "Analizza risultati", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
+      </div>
     </div>
   );
 }

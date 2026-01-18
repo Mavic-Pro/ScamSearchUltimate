@@ -30,12 +30,21 @@ ALLOWED_ASSET = {"text/css", "text/javascript", "application/javascript", "appli
 
 
 class FetchResult:
-    def __init__(self, ok: bool, status: str, reason: str | None, content: bytes | None, headers: dict):
+    def __init__(
+        self,
+        ok: bool,
+        status: str,
+        reason: str | None,
+        content: bytes | None,
+        headers: dict,
+        redirect_chain: list[dict] | None = None,
+    ):
         self.ok = ok
         self.status = status
         self.reason = reason
         self.content = content
         self.headers = headers
+        self.redirect_chain = redirect_chain or []
 
 
 def is_dangerous_url(url: str) -> bool:
@@ -49,17 +58,17 @@ def is_dangerous_url(url: str) -> bool:
 
 def safe_fetch_html(url: str, timeout: int = 8) -> FetchResult:
     if is_dangerous_url(url):
-        return FetchResult(False, "SKIPPED_FILE", "dangerous_extension", None, {})
+        return FetchResult(False, "SKIPPED_FILE", "dangerous_extension", None, {}, [])
     try:
         resp = requests.get(url, timeout=timeout, headers={"User-Agent": "ScamHunter/1.0"})
     except Exception as exc:
-        return FetchResult(False, "FAILED", str(exc), None, {})
+        return FetchResult(False, "FAILED", str(exc), None, {}, [])
 
     ctype = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
     if ctype not in ALLOWED_HTML:
-        return FetchResult(False, "SKIPPED_FILE", f"content_type:{ctype}", None, dict(resp.headers))
+        return FetchResult(False, "SKIPPED_FILE", f"content_type:{ctype}", None, dict(resp.headers), _redirect_chain(resp))
 
-    return FetchResult(True, "DONE", None, resp.content, dict(resp.headers))
+    return FetchResult(True, "DONE", None, resp.content, dict(resp.headers), _redirect_chain(resp))
 
 
 def safe_fetch_asset(url: str, timeout: int = 6) -> Tuple[str, Optional[bytes], Optional[str]]:
@@ -81,3 +90,17 @@ def hash_bytes(data: bytes) -> Tuple[str, str]:
     md5 = hashlib.md5(data).hexdigest()
     sha256 = hashlib.sha256(data).hexdigest()
     return md5, sha256
+
+
+def _redirect_chain(resp: requests.Response) -> list[dict]:
+    chain: list[dict] = []
+    for item in resp.history or []:
+        chain.append(
+            {
+                "url": item.url,
+                "status": item.status_code,
+                "location": item.headers.get("Location"),
+            }
+        )
+    chain.append({"url": resp.url, "status": resp.status_code, "location": None})
+    return chain

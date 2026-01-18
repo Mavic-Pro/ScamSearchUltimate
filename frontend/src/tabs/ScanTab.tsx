@@ -19,6 +19,9 @@ export default function ScanTab() {
   const [error, setError] = React.useState<string | null>(null);
   const [warning, setWarning] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const loadJobs = async () => {
     const res = await safeGet<Job[]>("/api/jobs");
@@ -84,6 +87,21 @@ export default function ScanTab() {
       loadJobs();
     } else {
       setError(res.error);
+    }
+  };
+
+  const runAi = async () => {
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "scan_queue_summary",
+      prompt: aiPrompt || null,
+      data: { jobs }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
     }
   };
 
@@ -167,6 +185,18 @@ export default function ScanTab() {
             </div>
           ))}
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Insights", "AI Insights", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. prioritize risky jobs", "Es: prioritizza job rischiosi", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary">{tr("Analyze Queue", "Analizza coda", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

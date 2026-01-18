@@ -14,6 +14,9 @@ export default function ExportTab() {
   const [iocDateTo, setIocDateTo] = React.useState("");
   const [iocFormat, setIocFormat] = React.useState("csv");
   const [status, setStatus] = React.useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const buildIocQuery = () => {
     const qs = new URLSearchParams();
@@ -44,6 +47,31 @@ export default function ExportTab() {
       setStatus(tr(`TAXII push OK. IOC: ${res.data.pushed}`, `TAXII push OK. IOC: ${res.data.pushed}`, lang));
     } else {
       setStatus(tr(`TAXII push failed: ${res.error}`, `TAXII push fallito: ${res.error}`, lang));
+    }
+  };
+
+  const runAi = async () => {
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "export_helper",
+      prompt: aiPrompt || null,
+      data: {
+        kind: iocKind || null,
+        value: iocValue || null,
+        domain: iocDomain || null,
+        url: iocUrl || null,
+        source: iocSource || null,
+        target_id: iocTargetId || null,
+        date_from: iocDateFrom || null,
+        date_to: iocDateTo || null,
+        format: iocFormat
+      }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
     }
   };
 
@@ -127,6 +155,18 @@ export default function ExportTab() {
           <button className="secondary" onClick={taxiiPush}>{tr("TAXII Push", "TAXII Push", lang)}</button>
         </div>
         {status && <div className="muted">{status}</div>}
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Export Helper", "Assistente AI Export", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. best format for sharing", "Es: formato migliore per condivisione", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary">{tr("Get Suggestions", "Ottieni suggerimenti", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );

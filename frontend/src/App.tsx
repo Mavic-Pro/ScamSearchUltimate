@@ -1,5 +1,6 @@
 import React from "react";
 import KeyStatusBanner from "./components/KeyStatusBanner";
+import UpdateBanner from "./components/UpdateBanner";
 import LogPanel from "./components/LogPanel";
 import AlertsTab from "./tabs/AlertsTab";
 import CampaignsTab from "./tabs/CampaignsTab";
@@ -48,6 +49,14 @@ export default function App() {
     return () => window.removeEventListener("open-lab", handler);
   }, []);
 
+  React.useEffect(() => {
+    const handler = () => {
+      setActive("signatures");
+    };
+    window.addEventListener("open-signatures", handler);
+    return () => window.removeEventListener("open-signatures", handler);
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -85,6 +94,7 @@ export default function App() {
       </header>
       <main className="app-main">
         <KeyStatusBanner onOpenSettings={() => setActive("settings")} />
+        <UpdateBanner />
         {active === "scan" && (
           <div className="hint-card">
             <span>{t("hint_dork", lang)}</span>

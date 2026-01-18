@@ -16,6 +16,9 @@ export default function GraphTab() {
   const [kind, setKind] = React.useState("domain");
   const [value, setValue] = React.useState("");
   const [selected, setSelected] = React.useState<{ kind: string; value: string } | null>(null);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiReply, setAiReply] = React.useState<string | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<string | null>(null);
 
   const size = 520;
   const radius = 200;
@@ -47,6 +50,25 @@ export default function GraphTab() {
   React.useEffect(() => {
     load();
   }, []);
+
+  const runAi = async () => {
+    setAiStatus(tr("AI analysis running...", "Analisi AI in corso...", lang));
+    const res = await safePost<{ reply?: string }>("/api/ai/task", {
+      task: "graph_insights",
+      prompt: aiPrompt || null,
+      data: {
+        nodes: graph.nodes.slice(0, 80),
+        edges: graph.edges.slice(0, 120),
+        selected
+      }
+    });
+    if (res.ok) {
+      setAiReply(res.data.reply || "");
+      setAiStatus(null);
+    } else {
+      setAiStatus(res.error);
+    }
+  };
 
   const nodes = graph.nodes.slice(0, 80);
   const edges = graph.edges.slice(0, 120);
@@ -183,6 +205,18 @@ export default function GraphTab() {
           <span className="legend jarm">jarm</span>
           <span className="legend fav">favicon</span>
         </div>
+      </div>
+      <div className="panel">
+        <h3>{tr("AI Insights", "AI Insights", lang)}</h3>
+        <div className="form-grid">
+          <label>
+            {tr("Optional prompt", "Prompt opzionale", lang)}
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder={tr("e.g. suggest next expansion", "Es: suggerisci prossime espansioni", lang)} />
+          </label>
+          <button onClick={runAi} className="secondary">{tr("Analyze Graph", "Analizza grafo", lang)}</button>
+        </div>
+        {aiStatus && <div className="muted">{aiStatus}</div>}
+        {aiReply && <div className="muted">{aiReply}</div>}
       </div>
     </div>
   );
