@@ -56,3 +56,18 @@ def resolve_target(conn, field: str, value: str):
             (value,),
         )
         return cur.fetchone()
+
+
+def delete_target_and_related(conn, target_id: int):
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM assets WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM indicators WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM signature_matches WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM yara_matches WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM alerts WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM campaign_members WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM urlscan_local WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM iocs WHERE target_id=%s", (target_id,))
+        cur.execute("DELETE FROM targets WHERE id=%s", (target_id,))
+        cur.execute("DELETE FROM campaigns WHERE id NOT IN (SELECT campaign_id FROM campaign_members)")
+        conn.commit()

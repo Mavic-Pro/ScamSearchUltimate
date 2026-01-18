@@ -16,6 +16,7 @@ export default function AlertsTab() {
   const lang = getLang();
   const [alerts, setAlerts] = React.useState<Alert[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<Alert[]>("/api/alerts");
@@ -39,6 +40,7 @@ export default function AlertsTab() {
       </div>
       {error && <ErrorBanner message={error} onRepaired={load} />}
       <div className="panel">
+        {status && <div className="muted">{status}</div>}
         <div className="table">
           {alerts.map((alert) => (
             <div key={alert.id} className="row alert-row">
@@ -55,6 +57,7 @@ export default function AlertsTab() {
                       window.dispatchEvent(
                         new CustomEvent("open-lab", { detail: { targetId: alert.target_id } })
                       );
+                      setStatus(tr("Opening Lab for alert target.", "Apertura Lab per target alert.", lang));
                     }}
                   >
                     Apri Lab

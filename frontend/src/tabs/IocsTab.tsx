@@ -32,6 +32,7 @@ export default function IocsTab() {
   const [status, setStatus] = React.useState<string | null>(null);
 
   const load = async () => {
+    setStatus(tr("Loading IOCs...", "Caricamento IOC...", lang));
     const qs = new URLSearchParams();
     if (kind) qs.set("kind", kind);
     if (value) qs.set("value", value);
@@ -45,8 +46,10 @@ export default function IocsTab() {
     if (res.ok) {
       setIocs(res.data);
       setError(null);
+      setStatus(tr(`Loaded ${res.data.length} IOCs.`, `Caricati ${res.data.length} IOC.`, lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -145,6 +148,7 @@ export default function IocsTab() {
           <button
             className="secondary"
             onClick={() => {
+              setStatus(tr("Starting export...", "Avvio export...", lang));
               const qs = new URLSearchParams();
               if (kind) qs.set("kind", kind);
               if (value) qs.set("value", value);

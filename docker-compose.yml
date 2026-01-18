@@ -22,8 +22,11 @@ services:
       DB_PASSWORD: scamhunter
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
       PLAYWRIGHT_ENABLED: 1
+      STORAGE_DIR: /app/backend/storage
     ports:
       - "8000:8000"
+    volumes:
+      - scamhunter_storage:/app/backend/storage
     depends_on:
       - db
 
@@ -38,6 +41,9 @@ services:
       DB_PASSWORD: scamhunter
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
       PLAYWRIGHT_ENABLED: 1
+      STORAGE_DIR: /app/backend/storage
+    volumes:
+      - scamhunter_storage:/app/backend/storage
     depends_on:
       - db
 
@@ -52,3 +58,4 @@ services:
 
 volumes:
   scamhunter_pg:
+  scamhunter_storage:

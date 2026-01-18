@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.src.core.providers.ddg import ddg_search
-from backend.src.core.providers.fofa import fofa_search
+from backend.src.core.providers.fofa import fofa_search_verbose
 from backend.src.core.providers.serpapi import serp_search_verbose
 from backend.src.core.providers.urlscan import urlscan_search
 from backend.src.core.settings import get_setting_value
@@ -29,12 +29,11 @@ def _run_hunt_targets(conn, rule_type: str, rule: str) -> tuple[list[str], dict,
     warnings: list[str] = []
     urls: list[str] = []
     if rule_type == "fofa":
-        fofa_urls = fofa_search(conn, rule)
-        urlscan_urls = urlscan_search(conn, rule)
+        fofa_urls, fofa_err = fofa_search_verbose(conn, rule)
+        if fofa_err:
+            warnings.append(fofa_err)
         debug["fofa"] = len(fofa_urls)
-        debug["urlscan"] = len(urlscan_urls)
         urls.extend(fofa_urls)
-        urls.extend(urlscan_urls)
     elif rule_type == "urlscan":
         urlscan_urls = urlscan_search(conn, rule)
         debug["urlscan"] = len(urlscan_urls)

@@ -2,7 +2,7 @@ import time
 
 from backend.src.core.scan_minimal import run_minimal_scan_job
 from backend.src.db.connection import connect, load_db_config
-from backend.src.db.dao.jobs import lease_next_job, requeue_stuck, update_job_status
+from backend.src.db.dao.jobs import get_job_status, lease_next_job, requeue_stuck, update_job_status
 from backend.src.utils.logging import log_error, log_info
 
 
@@ -29,6 +29,9 @@ def run_worker(poll_seconds: int = 2, lease_seconds: int = 30) -> None:
             try:
                 result = handler(conn, job["id"], job["payload"])
                 status = result.get("status", "DONE")
+                current = get_job_status(conn, job["id"])
+                if current in {"STOPPED", "SKIPPED"}:
+                    continue
                 update_job_status(conn, job["id"], status)
             except Exception as exc:
                 log_error("job failed", str(exc))

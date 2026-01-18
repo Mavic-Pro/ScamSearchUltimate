@@ -21,6 +21,7 @@ export default function SignaturesTab() {
   const [searchPattern, setSearchPattern] = React.useState("");
   const [searchField, setSearchField] = React.useState("html");
   const [searchResults, setSearchResults] = React.useState<any[]>([]);
+  const [status, setStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<Signature[]>("/api/signatures");
@@ -37,6 +38,7 @@ export default function SignaturesTab() {
   }, []);
 
   const handleCreate = async () => {
+    setStatus(tr("Saving signature...", "Salvataggio firma...", lang));
     const res = await safePost<{ id: number }>("/api/signatures", {
       name,
       pattern,
@@ -46,21 +48,26 @@ export default function SignaturesTab() {
     if (res.ok) {
       setName("");
       setPattern("");
+      setStatus(tr("Signature saved.", "Firma salvata.", lang));
       load();
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
   const handleSearch = async () => {
+    setStatus(tr("Searching signatures...", "Ricerca firme...", lang));
     const res = await safePost<{ results: any[] }>("/api/signatures/search", {
       pattern: searchPattern,
       target_field: searchField
     });
     if (res.ok) {
       setSearchResults(res.data.results || []);
+      setStatus(tr(`Found ${res.data.results?.length ?? 0} results.`, `Trovati ${res.data.results?.length ?? 0} risultati.`, lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -91,6 +98,7 @@ export default function SignaturesTab() {
             </select>
           </label>
           <button onClick={handleCreate}>{tr("Add", "Aggiungi", lang)}</button>
+          {status && <span className="status">{status}</span>}
         </div>
       </div>
       <div className="panel">

@@ -1,6 +1,6 @@
 import React from "react";
 import ErrorBanner from "../components/ErrorBanner";
-import { safeGet } from "../utils/api";
+import { safeGet, safePost } from "../utils/api";
 import { getLang, tr } from "../i18n";
 
 interface Campaign {
@@ -22,12 +22,31 @@ export default function CampaignsTab() {
   const lang = getLang();
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     const res = await safeGet<Campaign[]>("/api/campaigns");
     if (res.ok) {
       setCampaigns(res.data);
       setError(null);
+    } else {
+      setError(res.error);
+    }
+  };
+
+  const removeTarget = async (targetId: number) => {
+    const ok = window.confirm(
+      tr(
+        "Remove target and all related data from the database?",
+        "Rimuovere il target e tutti i dati correlati dal database?",
+        lang
+      )
+    );
+    if (!ok) return;
+    const res = await safePost(`/api/targets/${targetId}/delete`, {});
+    if (res.ok) {
+      setStatus(tr("Target removed.", "Target rimosso.", lang));
+      load();
     } else {
       setError(res.error);
     }
@@ -45,6 +64,7 @@ export default function CampaignsTab() {
       </div>
       {error && <ErrorBanner message={error} onRepaired={load} />}
       <div className="panel">
+        {status && <div className="muted">{status}</div>}
         <div className="table">
           {campaigns.map((c) => (
             <div key={c.id} className="row campaign-row">
@@ -59,17 +79,27 @@ export default function CampaignsTab() {
                     <span className="truncate">{c.sample_domain || c.sample_url || "-"}</span>
                     <span>
                       {c.sample_target_id ? (
-                        <button
-                          className="secondary"
-                          onClick={() => {
-                            localStorage.setItem("lab_target_id", String(c.sample_target_id));
-                            window.dispatchEvent(
-                              new CustomEvent("open-lab", { detail: { targetId: c.sample_target_id } })
-                            );
-                          }}
-                        >
-                          Apri Lab
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            className="secondary"
+                            onClick={() => {
+                              localStorage.setItem("lab_target_id", String(c.sample_target_id));
+                              window.dispatchEvent(
+                                new CustomEvent("open-lab", { detail: { targetId: c.sample_target_id } })
+                              );
+                              setStatus(tr("Opening Lab for campaign target.", "Apertura Lab per target campagna.", lang));
+                            }}
+                          >
+                            Apri Lab
+                          </button>
+                          <button
+                            className="secondary"
+                            onClick={() => removeTarget(c.sample_target_id!)}
+                            title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}
+                          >
+                            {tr("Delete target", "Elimina target", lang)}
+                          </button>
+                        </div>
                       ) : (
                         "-"
                       )}

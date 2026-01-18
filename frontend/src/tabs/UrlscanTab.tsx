@@ -32,6 +32,7 @@ export default function UrlscanTab() {
   });
 
   const run = async () => {
+    setStatus(tr("Searching...", "Ricerca in corso...", lang));
     const res = await safePost<UrlscanResponse>("/api/urlscan/search", {
       query: query || null,
       domain: domain || null,
@@ -79,6 +80,7 @@ export default function UrlscanTab() {
       }
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -88,11 +90,13 @@ export default function UrlscanTab() {
   }, [domHash, headersHash]);
 
   const queueScan = async (url: string) => {
+    setStatus(tr("Queueing scan...", "Messa in coda scan...", lang));
     const res = await safePost<{ queued: number[] }>("/api/scan", { url });
     if (res.ok) {
       setStatus(tr(`Scan queued for ${url}`, `Scan in coda per ${url}`, lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -113,9 +117,11 @@ export default function UrlscanTab() {
     link.href = URL.createObjectURL(blob);
     link.download = "urlscan-local.csv";
     link.click();
+    setStatus(tr("CSV export started.", "Export CSV avviato.", lang));
   };
 
   const markIoc = async (kind: string, value: string, row: Record<string, string | number>) => {
+    setIocStatus(tr("Saving IOC...", "Salvataggio IOC...", lang));
     const res = await safePost<{ id: number }>("/api/iocs", {
       kind,
       value,
@@ -128,6 +134,25 @@ export default function UrlscanTab() {
       setIocStatus(tr(`IOC saved (${kind})`, `IOC salvato (${kind})`, lang));
     } else {
       setIocStatus(tr(`IOC error: ${res.error}`, `Errore IOC: ${res.error}`, lang));
+    }
+  };
+
+  const removeTarget = async (targetId: number) => {
+    const ok = window.confirm(
+      tr(
+        "Remove target and all related data from the database?",
+        "Rimuovere il target e tutti i dati correlati dal database?",
+        lang
+      )
+    );
+    if (!ok) return;
+    const res = await safePost(`/api/targets/${targetId}/delete`, {});
+    if (res.ok) {
+      setStatus(tr("Target removed.", "Target rimosso.", lang));
+      window.alert(tr("Target removed.", "Target rimosso.", lang));
+      run();
+    } else {
+      setError(res.error);
     }
   };
 
@@ -210,6 +235,15 @@ export default function UrlscanTab() {
                       }}
                     >
                       {tr("Open Lab", "Apri Lab", lang)}
+                    </button>
+                  )}
+                  {row.target_id && (
+                    <button
+                      className="secondary"
+                      onClick={() => removeTarget(Number(row.target_id))}
+                      title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}
+                    >
+                      {tr("Delete target", "Elimina target", lang)}
                     </button>
                   )}
                   {row.dom_hash && (

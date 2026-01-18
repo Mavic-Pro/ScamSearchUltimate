@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pathlib import Path
 from typing import Dict, List
 from urllib.parse import urljoin, urlparse
@@ -57,6 +58,7 @@ def scan_url(conn, url: str) -> Dict[str, object]:
 
     fetch = safe_fetch_html(url)
     if not fetch.ok:
+        _capture_screenshot(conn, target_id, url)
         update_target(conn, target_id, status=fetch.status, reason=fetch.reason)
         return {"id": target_id, "status": fetch.status, "reason": fetch.reason}
 
@@ -305,7 +307,7 @@ def _update_risk_and_alerts(conn, target_id: int) -> None:
 
 
 def _capture_screenshot(conn, target_id: int, url: str):
-    result = capture_screenshot(url, target_id)
+    result = capture_screenshot(url, target_id, storage_dir=str(_storage_path("screenshots")))
     update_target(
         conn,
         target_id,
@@ -321,7 +323,7 @@ def _capture_screenshot(conn, target_id: int, url: str):
 
 def _save_full_html(target_id: int, html: str) -> str | None:
     try:
-        base = Path("storage/html")
+        base = _storage_path("html")
         base.mkdir(parents=True, exist_ok=True)
         path = base / f"{target_id}.html"
         # Limit to 2MB to avoid oversized storage while keeping full DOM for most cases.
@@ -331,6 +333,11 @@ def _save_full_html(target_id: int, html: str) -> str | None:
         return str(path)
     except Exception:
         return None
+
+
+def _storage_path(subdir: str) -> Path:
+    base = os.getenv("STORAGE_DIR", "storage")
+    return Path(base) / subdir
 
 
 def _extract_favicon_hash(conn, html: str, base_url: str) -> tuple[str | None, str | None]:

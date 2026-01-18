@@ -12,6 +12,7 @@ export default function GraphTab() {
   const lang = getLang();
   const [graph, setGraph] = React.useState<GraphData>({ nodes: [], edges: [] });
   const [error, setError] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
   const [kind, setKind] = React.useState("domain");
   const [value, setValue] = React.useState("");
   const [selected, setSelected] = React.useState<{ kind: string; value: string } | null>(null);
@@ -31,12 +32,15 @@ export default function GraphTab() {
   };
 
   const expand = async (k?: string, v?: string) => {
+    setStatus(tr("Expanding graph...", "Espansione grafo...", lang));
     const res = await safePost<GraphData>("/api/graph/expand", { kind: k ?? kind, value: v ?? value });
     if (res.ok) {
       setGraph(res.data);
       setError(null);
+      setStatus(tr("Graph expanded.", "Grafo espanso.", lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -94,8 +98,9 @@ export default function GraphTab() {
             {tr("Value", "Valore", lang)}
             <input value={value} onChange={(e) => setValue(e.target.value)} />
           </label>
-          <button onClick={expand}>{tr("Expand", "Espandi", lang)}</button>
+          <button onClick={() => expand()}>{tr("Expand", "Espandi", lang)}</button>
         </div>
+        {status && <div className="muted">{status}</div>}
       </div>
       <div className="panel">
         <h3>{tr("Nodes", "Nodi", lang)}</h3>
@@ -134,6 +139,7 @@ export default function GraphTab() {
                       setValue(nv);
                       setSelected({ kind: nk, value: nv });
                       expand(nk, nv);
+                      setStatus(tr("Node expanded.", "Nodo espanso.", lang));
                     }}
                   />
                   <title>{`${node.kind}: ${node.value}`}</title>
@@ -158,6 +164,7 @@ export default function GraphTab() {
                     const targetId = res.data.target.id;
                     localStorage.setItem("lab_target_id", String(targetId));
                     window.dispatchEvent(new CustomEvent("open-lab", { detail: { targetId } }));
+                    setStatus(tr("Opening Lab for target.", "Apertura Lab per target.", lang));
                   } else {
                     setError(tr("Target not found for this node.", "Target non trovato per questo nodo.", lang));
                   }

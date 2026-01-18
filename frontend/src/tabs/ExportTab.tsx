@@ -55,13 +55,22 @@ export default function ExportTab() {
       </div>
       <div className="panel">
         <div className="export-actions">
-          <a className="button" href={`${API_BASE}/api/export/csv`}>
+          <a
+            className="button"
+            href={`${API_BASE}/api/export/csv`}
+            onClick={() => setStatus(tr("CSV export started.", "Export CSV avviato.", lang))}
+          >
             {tr("Download CSV", "Download CSV", lang)}
           </a>
-          <a className="button" href={`${API_BASE}/api/export/graph`}>
+          <a
+            className="button"
+            href={`${API_BASE}/api/export/graph`}
+            onClick={() => setStatus(tr("Graph export started.", "Export grafo avviato.", lang))}
+          >
             {tr("Download Graph JSON", "Download Graph JSON", lang)}
           </a>
         </div>
+        {status && <div className="muted">{status}</div>}
       </div>
       <div className="panel">
         <h3>{tr("Export IOC", "Export IOC", lang)}</h3>
@@ -108,7 +117,11 @@ export default function ExportTab() {
               <option value="misp">MISP JSON</option>
             </select>
           </label>
-          <a className="button secondary" href={`${API_BASE}/api/iocs/export?${buildIocQuery()}`}>
+          <a
+            className="button secondary"
+            href={`${API_BASE}/api/iocs/export?${buildIocQuery()}`}
+            onClick={() => setStatus(tr("IOC export started.", "Export IOC avviato.", lang))}
+          >
             {tr("Export IOC", "Export IOC", lang)}
           </a>
           <button className="secondary" onClick={taxiiPush}>{tr("TAXII Push", "TAXII Push", lang)}</button>

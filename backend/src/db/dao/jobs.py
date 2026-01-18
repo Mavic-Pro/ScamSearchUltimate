@@ -22,6 +22,13 @@ def list_jobs(conn, limit: int = 100):
         return cur.fetchall() or []
 
 
+def get_job_status(conn, job_id: int) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM jobs WHERE id=%s", (job_id,))
+        row = cur.fetchone()
+        return row["status"] if row else None
+
+
 def lease_next_job(conn, lease_seconds: int = 30):
     with conn.cursor() as cur:
         cur.execute(
@@ -45,6 +52,27 @@ def update_job_status(conn, job_id: int, status: str, last_error: str | None = N
             "UPDATE jobs SET status=%s, last_error=%s, updated_at=%s WHERE id=%s",
             (status, last_error, utcnow(), job_id),
         )
+        conn.commit()
+
+
+def requeue_job(conn, job_id: int):
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE jobs SET status='QUEUED', lease_until=NULL, last_error=NULL, updated_at=%s WHERE id=%s",
+            (utcnow(), job_id),
+        )
+        conn.commit()
+
+
+def delete_job(conn, job_id: int):
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM jobs WHERE id=%s", (job_id,))
+        conn.commit()
+
+
+def delete_jobs_by_url(conn, url: str):
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM jobs WHERE payload->>'url'=%s", (url,))
         conn.commit()
 
 

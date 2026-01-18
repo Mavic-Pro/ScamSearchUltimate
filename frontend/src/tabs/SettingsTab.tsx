@@ -61,6 +61,7 @@ export default function SettingsTab() {
   };
 
   const generateKey = async () => {
+    setStatus(tr("Generating key...", "Generazione chiave...", lang));
     const res = await safeGet<{ key: string }>("/api/settings/keygen");
     if (!res.ok) {
       setError(res.error);
@@ -68,6 +69,7 @@ export default function SettingsTab() {
     }
     setGeneratedKey(res.data.key);
     setShowKeyModal(true);
+    setStatus(tr("Key generated.", "Chiave generata.", lang));
   };
 
   const copyKey = async () => {
@@ -76,6 +78,24 @@ export default function SettingsTab() {
     setStatus(tr("Key copied", "Chiave copiata", lang));
     } catch (err) {
       setError(tr("Unable to copy the key. Copy it manually.", "Impossibile copiare la chiave. Copiala manualmente.", lang));
+    }
+  };
+
+  const resetDb = async () => {
+    const ok = window.confirm(
+      tr(
+        "Reset the database? This removes scans, targets, and history but keeps API keys.",
+        "Azzerare il database? Rimuove scansioni, target e storico ma mantiene le API key.",
+        lang
+      )
+    );
+    if (!ok) return;
+    setStatus(tr("Resetting database...", "Reset database in corso...", lang));
+    const res = await safePost("/api/db/reset", {});
+    if (res.ok) {
+      setStatus(tr("Database reset completed.", "Reset database completato.", lang));
+    } else {
+      setStatus(tr(`Reset failed: ${res.error}`, `Reset fallito: ${res.error}`, lang));
     }
   };
 
@@ -125,6 +145,12 @@ export default function SettingsTab() {
             </div>
           </div>
           <button className="secondary" onClick={generateKey}>{tr("Generate key", "Genera chiave", lang)}</button>
+        </div>
+        <div className="row-actions" style={{ marginBottom: "16px" }}>
+          <button className="secondary" onClick={resetDb}>
+            {tr("Reset DB (keep keys)", "Reset DB (mantieni key)", lang)}
+          </button>
+          {status && <span className="status">{status}</span>}
         </div>
         <div className="form-grid">
           {KEYS.map((key) => (

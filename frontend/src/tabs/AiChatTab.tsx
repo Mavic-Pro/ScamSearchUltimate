@@ -13,6 +13,7 @@ export default function AiChatTab() {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [input, setInput] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
   const [targetId, setTargetId] = React.useState(() => localStorage.getItem("lab_target_id") || "");
   const [includeDom, setIncludeDom] = React.useState(false);
   const [includeIocs, setIncludeIocs] = React.useState(false);
@@ -25,6 +26,7 @@ export default function AiChatTab() {
 
   const send = async () => {
     if (!input.trim()) return;
+    setStatus(tr("Sending message...", "Invio messaggio...", lang));
     const next = [...messages, { role: "user", content: input.trim() }];
     setMessages(next);
     setInput("");
@@ -37,13 +39,16 @@ export default function AiChatTab() {
     if (res.ok) {
       setMessages([...next, { role: "assistant", content: res.data.reply }]);
       setError(null);
+      setStatus(tr("Reply received.", "Risposta ricevuta.", lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
   const suggest = async () => {
     if (!prompt.trim()) return;
+    setStatus(tr("Requesting suggestions...", "Richiesta suggerimenti...", lang));
     const res = await safePost<{ hunts: Array<Record<string, any>>; signatures: Array<Record<string, any>>; source: string }>(
       "/api/ai/suggest",
       {
@@ -56,26 +61,34 @@ export default function AiChatTab() {
     if (res.ok) {
       setSuggestions(res.data);
       setError(null);
+      setStatus(tr("Suggestions ready.", "Suggerimenti pronti.", lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
   const applyHunt = async (hunt: Record<string, any>) => {
+    setStatus(tr("Creating hunt...", "Creazione hunt...", lang));
     const res = await safePost("/api/hunt", hunt);
     if (res.ok) {
       setError(null);
+      setStatus(tr("Hunt created.", "Hunt creato.", lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
   const applySignature = async (sig: Record<string, any>) => {
+    setStatus(tr("Creating signature...", "Creazione firma...", lang));
     const res = await safePost("/api/signatures", sig);
     if (res.ok) {
       setError(null);
+      setStatus(tr("Signature created.", "Firma creata.", lang));
     } else {
       setError(res.error);
+      setStatus(res.error);
     }
   };
 
@@ -87,6 +100,7 @@ export default function AiChatTab() {
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="panel chat-panel">
+        {status && <div className="muted">{status}</div>}
         <div className="form-grid">
           <label>
             {tr("Target ID (optional)", "Target ID (opzionale)", lang)}

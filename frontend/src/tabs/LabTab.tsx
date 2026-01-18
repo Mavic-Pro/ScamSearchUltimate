@@ -11,6 +11,13 @@ interface LabResponse {
   yara?: Array<Record<string, string | number>>;
 }
 
+interface Job {
+  id: number;
+  type: string;
+  status: string;
+  payload: Record<string, string>;
+}
+
 export default function LabTab() {
   const lang = getLang();
   const [targetId, setTargetId] = React.useState(() => localStorage.getItem("lab_target_id") || "");
@@ -22,8 +29,11 @@ export default function LabTab() {
   );
   const [fofaField, setFofaField] = React.useState("body");
   const [fofaValue, setFofaValue] = React.useState("");
+  const [fofaLimit, setFofaLimit] = React.useState(50);
   const [screenshotError, setScreenshotError] = React.useState(false);
+  const [screenshotErrorMessage, setScreenshotErrorMessage] = React.useState<string | null>(null);
   const [faviconError, setFaviconError] = React.useState(false);
+  const [faviconErrorMessage, setFaviconErrorMessage] = React.useState<string | null>(null);
   const [showRaw, setShowRaw] = React.useState(false);
   const [showDom, setShowDom] = React.useState(false);
   const [showHeaders, setShowHeaders] = React.useState(false);
@@ -31,6 +41,14 @@ export default function LabTab() {
   const [domLoading, setDomLoading] = React.useState(false);
   const [domError, setDomError] = React.useState<string | null>(null);
   const [iocStatus, setIocStatus] = React.useState<string | null>(null);
+  const [targetJobs, setTargetJobs] = React.useState<Job[]>([]);
+  const [jobStatus, setJobStatus] = React.useState<string | null>(null);
+  const [whoisData, setWhoisData] = React.useState<any | null>(null);
+  const [whoisLoading, setWhoisLoading] = React.useState(false);
+  const [whoisError, setWhoisError] = React.useState<string | null>(null);
+  const [fofaStatus, setFofaStatus] = React.useState<string | null>(null);
+  const [showWhoisRaw, setShowWhoisRaw] = React.useState(false);
+  const [actionStatus, setActionStatus] = React.useState<string | null>(null);
 
   const load = async () => {
     if (!targetId) return;
@@ -39,11 +57,17 @@ export default function LabTab() {
       setData(res.data);
       setError(null);
       setScreenshotError(false);
+      setScreenshotErrorMessage(null);
       setFaviconError(false);
+      setFaviconErrorMessage(null);
       setDomFull(null);
       setDomError(null);
       setDomLoading(false);
       setIocStatus(null);
+      setWhoisData(null);
+      setWhoisError(null);
+      await loadJobs(res.data.target?.url ? String(res.data.target.url) : null);
+      await loadWhois();
     } else {
       setError(res.error);
     }
@@ -64,40 +88,220 @@ export default function LabTab() {
 
   const runPivot = async () => {
     if (!hashQuery) return;
+    setActionStatus(tr("Pivot hash requested.", "Pivot hash richiesto.", lang));
     const res = await safeGet<{ local: any[]; urlscan: string[]; warning?: string | null }>(
       `/api/pivot/hash?value=${encodeURIComponent(hashQuery)}`
     );
     if (res.ok) {
       setPivot(res.data);
       setError(null);
+      const localCount = res.data.local?.length ?? 0;
+      const urlscanCount = res.data.urlscan?.length ?? 0;
+      setActionStatus(
+        tr(
+          `Pivot hash completed. Local: ${localCount}, Urlscan: ${urlscanCount}.`,
+          `Pivot hash completato. Locali: ${localCount}, Urlscan: ${urlscanCount}.`,
+          lang
+        )
+      );
     } else {
       setError(res.error);
+      setActionStatus(res.error);
     }
   };
 
   const runTargetPivot = async (field: string, value: string) => {
+    setActionStatus(tr(`Pivot ${field} requested.`, `Pivot ${field} richiesto.`, lang));
     const res = await safeGet<{ local: any[] }>(`/api/pivot/target?field=${field}&value=${encodeURIComponent(value)}`);
     if (res.ok) {
       setPivot({ local: res.data.local, urlscan: [] });
       setError(null);
+      const localCount = res.data.local?.length ?? 0;
+      setActionStatus(
+        tr(
+          `Pivot ${field} completed. Local: ${localCount}.`,
+          `Pivot ${field} completato. Locali: ${localCount}.`,
+          lang
+        )
+      );
     } else {
       setError(res.error);
+      setActionStatus(res.error);
     }
   };
 
   const runFofaPivot = async (field: string, value: string) => {
+    if (!value.trim()) {
+      setFofaStatus(tr("FOFA value is empty.", "Valore FOFA vuoto.", lang));
+      return;
+    }
+    const size = Math.max(1, fofaLimit || 50);
+    setActionStatus(tr("FOFA pivot requested.", "Pivot FOFA richiesto.", lang));
+    setFofaStatus(tr("FOFA search running...", "Ricerca FOFA in corso...", lang));
     const res = await safeGet<{ results: string[]; query: string; warning?: string | null }>(
-      `/api/pivot/fofa?field=${field}&value=${encodeURIComponent(value)}`
+      `/api/pivot/fofa?field=${field}&value=${encodeURIComponent(value)}&size=${size}`
     );
     if (res.ok) {
       setPivot({ local: [], urlscan: res.data.results, warning: res.data.warning });
       setError(null);
+      if (res.data.warning) {
+        setFofaStatus(res.data.warning);
+        setActionStatus(res.data.warning);
+      } else {
+        setFofaStatus(tr("FOFA search completed.", "Ricerca FOFA completata.", lang));
+        const fofaCount = res.data.results?.length ?? 0;
+        setActionStatus(
+          tr(
+            `FOFA pivot completed. Results: ${fofaCount}.`,
+            `Pivot FOFA completato. Risultati: ${fofaCount}.`,
+            lang
+          )
+        );
+      }
+      const urls = (res.data.results || []).slice(0, size);
+      if (urls.length > 0) {
+        const queued = await safePost<{ queued: number[] }>("/api/scan/bulk", { urls });
+        if (queued.ok) {
+          setActionStatus(
+            tr(
+              `Queued ${queued.data.queued?.length ?? 0} scans from FOFA results.`,
+              `Messi in coda ${queued.data.queued?.length ?? 0} scan dai risultati FOFA.`,
+              lang
+            )
+          );
+        } else {
+          setActionStatus(queued.error);
+        }
+      } else {
+        setActionStatus(tr("No FOFA results to queue.", "Nessun risultato FOFA da mettere in coda.", lang));
+      }
     } else {
       setError(res.error);
+      setFofaStatus(res.error);
+      setActionStatus(res.error);
+    }
+  };
+
+  const loadJobs = async (url: string | null) => {
+    if (!url) {
+      setTargetJobs([]);
+      return;
+    }
+    const res = await safeGet<Job[]>("/api/jobs");
+    if (res.ok) {
+      const filtered = res.data.filter((job) => job.payload?.url === url);
+      setTargetJobs(filtered);
+      setJobStatus(null);
+    } else {
+      setJobStatus(res.error);
+    }
+  };
+
+  const rescanTarget = async () => {
+    const url = data?.target?.url;
+    if (!url) return;
+    const ok = window.confirm(
+      tr(
+        "Queue a rescan for this target?",
+        "Mettere in coda una riscansione per questo target?",
+        lang
+      )
+    );
+    if (!ok) return;
+    const res = await safePost<{ queued: number[] }>("/api/scan", { url });
+    if (res.ok) {
+      setJobStatus(tr("Rescan queued.", "Riscansione in coda.", lang));
+      window.alert(tr("Rescan queued.", "Riscansione in coda.", lang));
+      await loadJobs(String(url));
+    } else {
+      setJobStatus(res.error);
+    }
+  };
+
+  const deleteTarget = async () => {
+    if (!targetId) return;
+    const ok = window.confirm(
+      tr(
+        "Remove target and all related data from the database?",
+        "Rimuovere il target e tutti i dati correlati dal database?",
+        lang
+      )
+    );
+    if (!ok) return;
+    const res = await safePost(`/api/targets/${targetId}/delete`, {});
+    if (res.ok) {
+      setJobStatus(tr("Target removed.", "Target rimosso.", lang));
+      setData(null);
+      setTargetJobs([]);
+      setTargetId("");
+      localStorage.removeItem("lab_target_id");
+    } else {
+      setJobStatus(res.error);
+    }
+  };
+
+  const updateJob = async (jobId: number, action: "stop" | "skip" | "remove") => {
+    const res = await safePost(`/api/jobs/${jobId}/${action}`, {});
+    if (res.ok) {
+      setJobStatus(tr(`Job ${action} OK.`, `Job ${action} OK.`, lang));
+      await loadJobs(data?.target?.url ? String(data.target.url) : null);
+    } else {
+      setJobStatus(res.error);
+    }
+  };
+
+  const rescanJob = async (job: Job) => {
+    const url = job.payload?.url;
+    if (!url) return;
+    const ok = window.confirm(
+      tr(
+        "Queue a rescan for this URL?",
+        "Mettere in coda una riscansione per questo URL?",
+        lang
+      )
+    );
+    if (!ok) return;
+    const res = await safePost<{ queued: number[] }>("/api/scan", { url });
+    if (res.ok) {
+      setJobStatus(tr("Rescan queued.", "Riscansione in coda.", lang));
+      window.alert(tr("Rescan queued.", "Riscansione in coda.", lang));
+      await loadJobs(String(url));
+    } else {
+      setJobStatus(res.error);
+    }
+  };
+
+  const handleScreenshotError = async () => {
+    setScreenshotError(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/lab/${targetId}/screenshot`, { cache: "no-store" });
+      if (res.status === 404) {
+        let detail = "";
+        try {
+          const data = await res.json();
+          detail = data?.detail ? ` (${data.detail})` : "";
+        } catch (err) {
+          detail = "";
+        }
+        setScreenshotErrorMessage(
+          tr(
+            "Screenshot not found.",
+            "Screenshot non trovato.",
+            lang
+          ) + detail
+        );
+      } else if (!res.ok) {
+        setScreenshotErrorMessage(tr("Screenshot unavailable.", "Screenshot non disponibile.", lang));
+      } else {
+        setScreenshotErrorMessage(null);
+      }
+    } catch (err) {
+      setScreenshotErrorMessage(tr("Error loading screenshot.", "Errore nel caricamento screenshot.", lang));
     }
   };
 
   const markIoc = async (kind: string, value: string, source: string) => {
+    setActionStatus(tr(`Saving IOC (${kind})...`, `Salvataggio IOC (${kind})...`, lang));
     const res = await safePost<{ id: number }>("/api/iocs", {
       kind,
       value,
@@ -108,8 +312,96 @@ export default function LabTab() {
     });
     if (res.ok) {
       setIocStatus(tr(`IOC saved (${kind})`, `IOC salvato (${kind})`, lang));
+      setActionStatus(tr(`IOC saved (${kind}).`, `IOC salvato (${kind}).`, lang));
     } else {
       setIocStatus(tr(`IOC error: ${res.error}`, `Errore IOC: ${res.error}`, lang));
+      setActionStatus(res.error);
+    }
+  };
+
+  const loadWhois = async () => {
+    if (!targetId) return;
+    setWhoisLoading(true);
+    setWhoisError(null);
+    setActionStatus(tr("WHOIS requested.", "WHOIS richiesto.", lang));
+    const res = await safeGet<{ domain: string | null; ip: string | null; rdap_domain: any; rdap_ip: any; warning?: string | null }>(
+      `/api/lab/${targetId}/whois`
+    );
+    if (res.ok) {
+      setWhoisData(res.data);
+      setActionStatus(tr("WHOIS loaded.", "WHOIS caricato.", lang));
+    } else {
+      setWhoisError(res.error);
+      setActionStatus(res.error);
+    }
+    setWhoisLoading(false);
+  };
+
+  const pickRdapEvent = (rdap: any, action: string) => {
+    const events = rdap?.events || [];
+    const event = events.find((e: any) => e?.eventAction === action);
+    return event?.eventDate || "-";
+  };
+
+  const listRdapNameservers = (rdap: any) => {
+    const ns = rdap?.nameservers || [];
+    return ns.map((n: any) => n?.ldhName).filter(Boolean);
+  };
+
+  const renderWhoisSummary = () => {
+    if (!whoisData) return null;
+    const domain = whoisData.rdap_domain;
+    const ip = whoisData.rdap_ip;
+    const domainNs = listRdapNameservers(domain);
+    return (
+      <div className="meta-grid">
+        <div><strong>Domain:</strong> {whoisData.domain || "-"}</div>
+        <div><strong>IP:</strong> {whoisData.ip || "-"}</div>
+        <div><strong>Registrar:</strong> {domain?.registrar?.name || domain?.registrar?.handle || "-"}</div>
+        <div><strong>Registered:</strong> {pickRdapEvent(domain, "registration")}</div>
+        <div><strong>Updated:</strong> {pickRdapEvent(domain, "last changed")}</div>
+        <div><strong>Expires:</strong> {pickRdapEvent(domain, "expiration")}</div>
+        <div><strong>Nameservers:</strong> {domainNs.length ? domainNs.join(", ") : "-"}</div>
+        <div><strong>IP Country:</strong> {ip?.country || "-"}</div>
+        <div><strong>IP Name:</strong> {ip?.name || "-"}</div>
+      </div>
+    );
+  };
+
+  const handleFaviconError = async () => {
+    setFaviconError(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/lab/${targetId}/favicon`, { cache: "no-store" });
+      if (res.status === 403) {
+        setFaviconErrorMessage(
+          tr(
+            "Remote favicon disabled. Enable REMOTE_FAVICON_ENABLED in Settings.",
+            "Favicon remoto disabilitato. Abilita REMOTE_FAVICON_ENABLED in Settings.",
+            lang
+          )
+        );
+      } else if (res.status === 404) {
+        let detail = "";
+        try {
+          const data = await res.json();
+          detail = data?.detail ? ` (${data.detail})` : "";
+        } catch (err) {
+          detail = "";
+        }
+        setFaviconErrorMessage(
+          tr(
+            "Favicon not found for this target.",
+            "Favicon non trovato per questo target.",
+            lang
+          ) + detail
+        );
+      } else if (!res.ok) {
+        setFaviconErrorMessage(tr("Favicon unavailable.", "Favicon non disponibile.", lang));
+      } else {
+        setFaviconErrorMessage(null);
+      }
+    } catch (err) {
+      setFaviconErrorMessage(tr("Error loading favicon.", "Errore nel caricamento favicon.", lang));
     }
   };
 
@@ -138,6 +430,18 @@ export default function LabTab() {
             <div><strong>IP:</strong> {data.target?.ip || "-"}</div>
             <div><strong>JARM:</strong> {data.target?.jarm || "-"}</div>
             <div><strong>{tr("Favicon", "Favicon", lang)}:</strong> {data.target?.favicon_hash || "-"}</div>
+          </div>
+          <div className="row-actions" style={{ marginBottom: "12px" }}>
+            {data.target?.url && (
+              <button onClick={rescanTarget} className="secondary" title={tr("Queue a new scan for this target URL", "Metti in coda una nuova scansione per questo target", lang)}>
+                {tr("Rescan target URL", "Riscansiona URL target", lang)}
+              </button>
+            )}
+            <button onClick={deleteTarget} className="secondary" title={tr("Delete target and all related data", "Elimina il target e tutti i dati correlati", lang)}>
+              {tr("Delete target", "Elimina target", lang)}
+            </button>
+            {actionStatus && <span className="status">{actionStatus}</span>}
+            {jobStatus && <span className="status">{jobStatus}</span>}
           </div>
           <div className="hash-grid">
             <div className="hash-card">
@@ -208,15 +512,16 @@ export default function LabTab() {
               className="screenshot"
               src={`${API_BASE}/api/lab/${targetId}/favicon`}
               alt="Favicon"
-              onError={() => setFaviconError(true)}
+              onError={handleFaviconError}
             />
           ) : (
             <div className="muted">
-              {tr(
-                "Favicon not available. Enable REMOTE_FAVICON_ENABLED in Settings for remote fetch.",
-                "Favicon non disponibile. Abilita REMOTE_FAVICON_ENABLED in Settings per il download remoto.",
-                lang
-              )}
+              {faviconErrorMessage ||
+                tr(
+                  "Favicon not available.",
+                  "Favicon non disponibile.",
+                  lang
+                )}
             </div>
           )}
           <div className="row-actions">
@@ -251,13 +556,14 @@ export default function LabTab() {
               className="screenshot"
               src={`${API_BASE}/api/lab/${targetId}/screenshot`}
               alt="Screenshot"
-              onError={() => setScreenshotError(true)}
+              onError={handleScreenshotError}
             />
           ) : (
             <div className="muted">
               {tr("No screenshot available. Status:", "Nessuno screenshot disponibile. Stato:", lang)}{" "}
               {String(data.target?.screenshot_status || "-")}{" "}
               {data.target?.screenshot_reason ? `(${data.target?.screenshot_reason})` : ""}
+              {screenshotErrorMessage ? ` ${screenshotErrorMessage}` : ""}
             </div>
           )}
           {data.target?.screenshot_path && !screenshotError && (
@@ -280,18 +586,28 @@ export default function LabTab() {
               className="secondary"
               onClick={async () => {
                 if (!targetId) return;
+                setActionStatus(tr("Loading full DOM...", "Caricamento DOM completo...", lang));
                 setDomLoading(true);
                 setDomError(null);
                 try {
                   const res = await fetch(`${API_BASE}/api/lab/${targetId}/dom`);
                   if (!res.ok) {
-                    setDomError(tr("Full DOM not available.", "DOM completo non disponibile.", lang));
+                    let detail = "";
+                    try {
+                      const data = await res.json();
+                      detail = data?.detail ? ` (${data.detail})` : "";
+                    } catch (err) {
+                      detail = "";
+                    }
+                    setDomError(tr("Full DOM not available.", "DOM completo non disponibile.", lang) + detail);
                   } else {
                     const text = await res.text();
                     setDomFull(text);
+                    setActionStatus(tr("Full DOM loaded.", "DOM completo caricato.", lang));
                   }
                 } catch (err) {
                   setDomError(tr("Error downloading DOM.", "Errore nel download del DOM.", lang));
+                  setActionStatus(tr("DOM download error.", "Errore download DOM.", lang));
                 } finally {
                   setDomLoading(false);
                 }
@@ -381,6 +697,75 @@ export default function LabTab() {
               ))}
             </div>
           )}
+          <h3>{tr("WHOIS / RDAP", "WHOIS / RDAP", lang)}</h3>
+          <div className="row-actions" style={{ marginBottom: "8px" }}>
+            <button className="secondary" onClick={loadWhois} title={tr("Refresh WHOIS/RDAP data", "Aggiorna i dati WHOIS/RDAP", lang)}>
+              {tr("Refresh WHOIS", "Aggiorna WHOIS", lang)}
+            </button>
+            <button className="secondary" onClick={() => setShowWhoisRaw(!showWhoisRaw)}>
+              {showWhoisRaw ? tr("Hide raw", "Nascondi raw", lang) : tr("Show raw", "Mostra raw", lang)}
+            </button>
+            {whoisLoading && <span className="status">{tr("Loading...", "Caricamento...", lang)}</span>}
+            {whoisError && <span className="status">{whoisError}</span>}
+          </div>
+          {whoisData && (
+            <div className="pivot-results">
+              {whoisData.warning && <div className="muted">{whoisData.warning}</div>}
+              {renderWhoisSummary()}
+              {showWhoisRaw && <pre>{JSON.stringify(whoisData, null, 2)}</pre>}
+            </div>
+          )}
+          <h3>{tr("Target Queue", "Coda Target", lang)}</h3>
+          {targetJobs.length === 0 ? (
+            <div className="muted">{tr("No jobs for this target.", "Nessun job per questo target.", lang)}</div>
+          ) : (
+            <div className="table">
+              {targetJobs.map((job) => (
+                <div key={job.id} className="row job-row">
+                  <span>#{job.id}</span>
+                  <span>{job.type}</span>
+                  <span className={`status ${job.status.toLowerCase()}`}>{job.status}</span>
+                  <span>{job.payload?.url || "-"}</span>
+                  <div className="row-actions">
+                    {job.payload?.url && (
+                      <button
+                        onClick={() => rescanJob(job)}
+                        className="secondary"
+                        title={tr("Queue a new scan for this URL", "Metti in coda una nuova scansione per questo URL", lang)}
+                      >
+                        {tr("Rescan URL", "Riscansiona URL", lang)}
+                      </button>
+                    )}
+                    {(job.status === "QUEUED" || job.status === "RUNNING") && (
+                      <>
+                        <button
+                          onClick={() => updateJob(job.id, "stop")}
+                          className="secondary"
+                          title={tr("Stop this job", "Ferma questo job", lang)}
+                        >
+                          {tr("Stop job", "Ferma job", lang)}
+                        </button>
+                        <button
+                          onClick={() => updateJob(job.id, "skip")}
+                          className="secondary"
+                          title={tr("Skip this job", "Salta questo job", lang)}
+                        >
+                          {tr("Skip job", "Salta job", lang)}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => updateJob(job.id, "remove")}
+                      className="secondary"
+                      title={tr("Remove this job from the queue", "Rimuovi questo job dalla coda", lang)}
+                    >
+                      {tr("Remove job", "Rimuovi job", lang)}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <h3>{tr("Pivot Hash", "Pivot Hash", lang)}</h3>
           <div className="form-grid">
             <label>
@@ -405,15 +790,33 @@ export default function LabTab() {
               {tr("Value", "Valore", lang)}
               <input value={fofaValue} onChange={(e) => setFofaValue(e.target.value)} />
             </label>
+            <label>
+              {tr("Limit", "Limite", lang)}
+              <input
+                type="number"
+                min={1}
+                value={fofaLimit}
+                onChange={(e) => setFofaLimit(Number(e.target.value))}
+              />
+            </label>
             <button onClick={() => runFofaPivot(fofaField, fofaValue)}>{tr("Search", "Cerca", lang)}</button>
           </div>
+          {fofaStatus && <div className="muted">{fofaStatus}</div>}
           {pivot && (
             <div className="pivot-results">
               {pivot.warning && <div className="muted">{pivot.warning}</div>}
               <h4>{tr("Local Matches", "Match Locali", lang)}</h4>
-              <pre>{JSON.stringify(pivot.local, null, 2)}</pre>
+              {pivot.local.length === 0 ? (
+                <div className="muted">{tr("No local results.", "Nessun risultato locale.", lang)}</div>
+              ) : (
+                <pre>{JSON.stringify(pivot.local, null, 2)}</pre>
+              )}
               <h4>{tr("Urlscan Matches", "Match Urlscan", lang)}</h4>
-              <pre>{JSON.stringify(pivot.urlscan, null, 2)}</pre>
+              {pivot.urlscan.length === 0 ? (
+                <div className="muted">{tr("No urlscan results.", "Nessun risultato urlscan.", lang)}</div>
+              ) : (
+                <pre>{JSON.stringify(pivot.urlscan, null, 2)}</pre>
+              )}
             </div>
           )}
           <h3>{tr("Signature Matches", "Match Firme", lang)}</h3>

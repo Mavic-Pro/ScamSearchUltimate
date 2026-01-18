@@ -19,7 +19,7 @@ class ScreenshotResult:
 
 
 def capture_screenshot(url: str, target_id: int, storage_dir: str = "storage/screenshots") -> ScreenshotResult:
-    if os.getenv("PLAYWRIGHT_ENABLED", "0") != "1":
+    if os.getenv("PLAYWRIGHT_ENABLED", "1") != "1":
         return ScreenshotResult("SKIPPED", None, None, None, None, "playwright_disabled")
 
     try:

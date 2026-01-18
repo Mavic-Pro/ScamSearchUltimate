@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Query
 
 from backend.src.core.providers.urlscan import urlscan_search_hash
-from backend.src.core.providers.fofa import fofa_search
-from backend.src.core.settings import get_setting_value
+from backend.src.core.providers.fofa import fofa_search_verbose
 from backend.src.db.connection import connect, load_db_config
 from backend.src.db.dao.assets import find_assets_by_hash
 from backend.src.db.dao.targets import find_targets_by_field
@@ -38,17 +37,20 @@ def pivot_by_target(field: str = Query(...), value: str = Query(...)):
 
 
 @router.get("/fofa")
-def pivot_fofa(field: str = Query(...), value: str = Query(...)):
+def pivot_fofa(field: str = Query(...), value: str = Query(...), size: int = Query(50, ge=1)):
     cfg = load_db_config()
     conn = connect(cfg)
     try:
         if field not in {"ip", "jarm", "favicon_hash", "cert", "body"}:
             return ok({"results": [], "warning": "campo_non_supportato"})
         query = _fofa_query(field, value)
-        results = fofa_search(conn, query, page=1, size=50)
+        results, fofa_err = fofa_search_verbose(conn, query, page=1, size=size)
         warning = None
-        if not results and not get_setting_value(conn, "FOFA_KEY"):
-            warning = "FOFA_KEY mancante: pivot FOFA disabilitato."
+        if fofa_err:
+            if "FOFA_KEY" in fofa_err or "FOFA_EMAIL" in fofa_err:
+                warning = "FOFA_KEY mancante: pivot FOFA disabilitato."
+            else:
+                warning = fofa_err
         return ok({"results": results, "query": query, "warning": warning})
     finally:
         conn.close()
@@ -66,12 +68,13 @@ def reverse_ip(ip: str = Query(...)):
 
 
 def _fofa_query(field: str, value: str) -> str:
+    value = value.replace("\\", "\\\\").replace('"', '\\"')
     if field == "ip":
         return f'ip="{value}"'
     if field == "jarm":
         return f'jarm="{value}"'
     if field == "favicon_hash":
-        return f'favicon_hash="{value}"'
+        return f'icon_hash="{value}"'
     if field == "cert":
         return f'cert="{value}"'
     return f'body="{value}"'

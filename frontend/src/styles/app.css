@@ -206,6 +206,11 @@ button.secondary {
   align-items: center;
 }
 
+.row.job-row {
+  grid-template-columns: 80px 120px 120px 1fr 220px 200px;
+  align-items: center;
+}
+
 .row textarea {
   min-height: 120px;
 }
